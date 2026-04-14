@@ -153,6 +153,46 @@ AIRSIM_SETTINGS_TEMPLATE = {
 }
 
 env_exec_path_dict = {
+    "BrushifyUrban_TrainSets": {
+        'bash_name': 'BrushifyUrban',
+        'exec_path': 'BrushifyUrban',
+    },
+    "CabinLake_TrainSets": {
+        'bash_name': 'CabinLake',
+        'exec_path': 'CabinLake',
+    },
+    "CityPark_TrainSets": {
+        'bash_name': 'CityPark',
+        'exec_path': 'CityPark',
+    },
+    "DownTown_train": {
+        'bash_name': 'DownTown1',
+        'exec_path': 'DownTown',
+    },
+    "ModularNeighborhood_TrainSets": {
+        'bash_name': 'NewNeighborhood',
+        'exec_path': 'Neighborhood',
+    },
+    "Slum_train": {
+        'bash_name': 'slum1',
+        'exec_path': 'Slum',
+    },
+    "UrbanJapan_TrainSets": {
+        'bash_name': 'UrbanJapan',
+        'exec_path': 'UrbanJapan',
+    },
+    "Venice_train": {
+        'bash_name': 'vinice_new1',
+        'exec_path': 'Venice',
+    },
+    "WesternTown_train": {
+        'bash_name': 'WesternTown1',
+        'exec_path': 'WesternTown',
+    },
+    "WinterTown_train": {
+        'bash_name': 'WinterTown1',
+        'exec_path': 'WinterTown',
+    },
     "Barnyard_test": {###
         'bash_name': 'Barnyard_test1',
         'exec_path': 'Barnyard',
@@ -614,4 +654,3 @@ if __name__ == '__main__':
 
     addr, server, thread = serve()
     print(f"start listening \t{addr._host}:{addr._port}")
-

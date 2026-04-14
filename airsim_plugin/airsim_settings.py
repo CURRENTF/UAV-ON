@@ -5,6 +5,17 @@ import argparse
 from common.param import args
 
 
+class AirsimActions(Enum):
+    STOP = "stop"
+    FORWARD = "forward"
+    LEFT = "left"
+    RIGHT = "right"
+    ROTATE_LEFT = "rotl"
+    ROTATE_RIGHT = "rotr"
+    ASCEND = "ascend"
+    DESCEND = "descend"
+
+
 class Singleton(type):
     _instances: Dict["Singleton", "Singleton"] = {}
 

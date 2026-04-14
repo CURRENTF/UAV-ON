@@ -20,7 +20,7 @@ fsspec==2023.6.0
 google-auth==2.22.0
 google-auth-oauthlib==1.0.0
 grpcio==1.57.0
-huggingface-hub==0.16.4
+huggingface-hub[cli,hf_transfer]==0.36.2
 idna==3.4
 igraph==0.10.6
 imageio==2.31.2
@@ -66,12 +66,12 @@ tensorboard-data-server==0.7.1
 tensorboardX==2.6.2.2
 texttable==1.6.7
 tokenizers==0.13.3
-torchaudio
-torchvision
+torchaudio==2.1.2
+torchvision==0.16.2
 tornado==4.5.3
 tqdm==4.66.1
 transformers==4.32.1
-typing_extensions==4.7.1
+typing_extensions==4.13.2
 tzdata==2023.3
 urllib3==1.26.16
 Werkzeug==2.3.7
