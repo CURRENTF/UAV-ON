@@ -481,9 +481,11 @@ class EventHandler(object):
                 p_s.append(None)
                 continue
             else:
-                subprocess_execute = "bash {}  -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} --settings={}".format(
+                unreal_log_path = "/tmp/uav_on_unreal_{}.log".format(ports[index])
+                subprocess_execute = "bash {}  -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} -stdout -FullStdOutLogOutput -Abslog={} --settings={}".format(
                     choose_env_exe_paths[index],
                     gpu_id,
+                    unreal_log_path,
                     str(CWD_DIR / 'settings' / str(ports[index]) / 'settings.json'),
                 )
                 time.sleep(3)
@@ -522,9 +524,11 @@ class EventHandler(object):
         env_path = os.path.join(args.root_path, env_info['exec_path'], env_info['bash_name'] + '.sh')
     
 
-        subprocess_execute = "bash {} -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} -settings={} ".format(
+        unreal_log_path = "/tmp/uav_on_unreal_{}.log".format(port)
+        subprocess_execute = "bash {} -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} -stdout -FullStdOutLogOutput -Abslog={} -settings={} ".format(
                     env_path,
                     gpu_id,
+                    unreal_log_path,
                     str(CWD_DIR / 'settings' / str(port) / 'settings.json'),
                 )
         time.sleep(1)

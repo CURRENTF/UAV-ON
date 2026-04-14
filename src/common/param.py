@@ -45,6 +45,17 @@ class Param:
         self.parser.add_argument("--gpu_id", type=int, default=0)
         self.parser.add_argument("--generation_model_path", type=str, default='Qwen/Qwen2.5-VL-7B-Instruct')
         self.parser.add_argument("--eval_save_path", type=str, default='./logs/eval', help="path to save the results")
+        self.parser.add_argument("--astar_voxel_resolution", type=float, default=1.0, help="3D A* occupancy grid resolution; UAV-ON paper uses 1-unit grids")
+        self.parser.add_argument("--astar_voxel_margin_xy", type=float, default=25.0, help="extra x/y crop margin around start and target points")
+        self.parser.add_argument("--astar_voxel_margin_z", type=float, default=20.0, help="extra z crop margin around start and target points")
+        self.parser.add_argument("--astar_min_extent_xy", type=float, default=100.0, help="minimum x/y voxel crop extent")
+        self.parser.add_argument("--astar_min_extent_z", type=float, default=60.0, help="minimum z voxel crop extent")
+        self.parser.add_argument("--astar_max_voxels", type=int, default=4000000, help="guardrail for local A* voxel crop size")
+        self.parser.add_argument("--astar_target_search_radius", type=float, default=20.0, help="radius for finding a free voxel adjacent to an annotated target point")
+        self.parser.add_argument("--astar_max_goal_candidates", type=int, default=128, help="maximum free target-adjacent voxels tried per episode")
+        self.parser.add_argument("--astar_max_move_voxels", type=int, default=1, help="maximum 1-unit grid moves merged into one physical action")
+        self.parser.add_argument("--astar_keep_voxels", type=str2bool, default=False, help="whether to keep generated binvox files")
+        self.parser.add_argument("--astar_voxel_dir", type=str, default=None, help="directory used when --astar_keep_voxels is true")
 
         self.args = self.parser.parse_args()
 

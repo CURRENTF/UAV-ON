@@ -103,6 +103,8 @@ Watch a full successful flight of our Aerial ObjectNav Agent in action:
   bash scripts/eval_unfixed.sh
   #CLIP-H
   bash scripts/eval_cliph.sh
+  #3D A* oracle
+  bash scripts/eval_astar.sh
 
   bash scripts/metric.sh
   ```

@@ -136,10 +136,10 @@ class AirVLNSimulatorClientTool:
                     count = 0
                     while not confirmed and count < 30:
                         try:
-                            self.airsim_clients[index_1][index_2].confirmConnection()                            
-                            self.airsim_clients[index_1][index_2].enableApiControl(True)                           
+                            self.airsim_clients[index_1][index_2].confirmConnection()
+                            self.airsim_clients[index_1][index_2].enableApiControl(True)
                             self.airsim_clients[index_1][index_2].armDisarm(True)
-                            self.airsim_clients[index_1][index_2].takeoffAsync()
+                            self.airsim_clients[index_1][index_2].takeoffAsync().join()
                             confirmed = True
                         except Exception as e:
                             time.sleep(1)
@@ -293,23 +293,32 @@ class AirVLNSimulatorClientTool:
                 raise Exception('error')
                 return
             
-            state_sensor = State(airsim_client)
-            imu_sensor = Imu(airsim_client,imu_name="Imu")
+            vehicles = airsim_client.listVehicles()
+            vehicle_name = vehicles[0] if vehicles else ''
+            state_sensor = State(airsim_client, drone_name=vehicle_name)
+            imu_sensor = Imu(airsim_client, drone_name=vehicle_name, imu_name="Imu")
             airsim_client.simPause(False)
-            
-            # airsim_client.armDisarm(True)
+            future = None
+
             if fly_type == 'move':
                 drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom
-                
-                airsim_client.moveToPositionAsync(pose.position.x_val, pose.position.y_val, pose.position.z_val,
-                                                  velocity=1, drivetrain=drivetrain)
-                
+                future = airsim_client.moveToPositionAsync(
+                    pose.position.x_val,
+                    pose.position.y_val,
+                    pose.position.z_val,
+                    velocity=1,
+                    drivetrain=drivetrain,
+                    vehicle_name=vehicle_name,
+                )
 
             elif fly_type == 'rotate':
                 (pitch, roll, yaw) = airsim.to_eularian_angles(pose.orientation)
-                airsim_client.rotateToYawAsync(math.degrees(yaw))
-                
-            airsim_client.simContinueForFrames(150)
+                future = airsim_client.rotateToYawAsync(math.degrees(yaw), vehicle_name=vehicle_name)
+
+            if future is not None:
+                future.join()
+            else:
+                time.sleep(0.05)
             airsim_client.simPause(True)
             
             state_info = copy.deepcopy(state_sensor.retrieve())
@@ -365,13 +374,20 @@ class AirVLNSimulatorClientTool:
             if airsim_client is None:
                 raise Exception('error')
                 return
+            vehicles = airsim_client.listVehicles()
+            vehicle_name = vehicles[0] if vehicles else ''
+            print(f"set pose vehicle={vehicle_name} target={pose.position}", flush=True)
             airsim_client.simPause(False)
-            airsim_client.simSetVehiclePose(pose=pose, ignore_collision=True)
-            vehicles=airsim_client.listVehicles()
-            airsim_client.simSetObjectScale(vehicles[0],airsim.Vector3r(0.5,0.5,0.5))
-            #print("当前的pose：",airsim_client.simGetVehiclePose())
-            airsim_client.simContinueForFrames(50)
+            airsim_client.simSetVehiclePose(pose=pose, ignore_collision=True, vehicle_name=vehicle_name)
+            if vehicle_name:
+                airsim_client.simSetObjectScale(vehicle_name, airsim.Vector3r(0.5, 0.5, 0.5))
+            time.sleep(0.2)
             airsim_client.simPause(True)
+            try:
+                state = airsim_client.getMultirotorState(vehicle_name=vehicle_name)
+                print(f"set pose done vehicle={vehicle_name} state={state.kinematics_estimated.position}", flush=True)
+            except Exception:
+                pass
             return
 
         threads = []
@@ -413,7 +429,10 @@ class AirVLNSimulatorClientTool:
                     for camera_name in cameras:
                         ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.Scene, pixels_as_float=False, compress=True))
                         ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.DepthPerspective, pixels_as_float=True, compress=False))
+                    airsim_client.simPause(False)
+                    time.sleep(0.2)
                     image_datas = airsim_client.simGetImages(requests=ImageRequest)
+                    airsim_client.simPause(True)
                     images, depth_images = [], []
                     for idx, camera_name in enumerate(cameras):
                         rgb_resp = image_datas[2 * idx]
@@ -498,4 +517,4 @@ class AirVLNSimulatorClientTool:
         if not (np.array(thread_results) == True).all():
             logger.error('getSensorInfo failed.')
             return None
-        return results 
+        return results
