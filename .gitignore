@@ -26,3 +26,7 @@ method/
 # Optional: Ignore logs or temp files
 *.log
 *.jsonl
+
+# Local one-off debug scripts
+/scripts/tmp/*
+!/scripts/tmp/.gitkeep
