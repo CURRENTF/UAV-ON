@@ -1,12 +1,17 @@
 import os
+from contextlib import nullcontext
 from pathlib import Path
 import random
 import sys
 import time
 
 import numpy as np
-import torch
 import tqdm
+
+try:
+    import torch
+except ImportError:
+    torch = None
 
 sys.path.append(str(Path(str(os.getcwd())).resolve()))
 from common.param import args
@@ -18,7 +23,8 @@ from utils.logger import logger
 
 
 def eval(modelWrapper: BaseModelWrapper, env: AirVLNENV, is_fixed, save_eval_path):
-    with torch.no_grad():
+    no_grad = torch.no_grad if torch is not None else nullcontext
+    with no_grad():
         data = BatchIterator(env)
         data_len = len(data)
         pbar = tqdm.tqdm(total=data_len, desc="batch")
@@ -75,8 +81,9 @@ if __name__ == "__main__":
     seed = 42
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch is not None:
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
 
     if args.is_fixed:
         raise RuntimeError("AStarOracle requires --is_fixed false so 1-unit action step sizes are honored.")

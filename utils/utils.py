@@ -1,11 +1,17 @@
 import os
 
-import torch
-import torch.distributed as dist
+try:
+    import torch
+    import torch.distributed as dist
+except ImportError:
+    torch = None
+    dist = None
 from src.common.param import args
 
 
 def is_dist_avail_and_initialized():
+    if dist is None:
+        return False
     if not dist.is_available():
         return False
     if not dist.is_initialized():
@@ -40,6 +46,9 @@ def init_distributed_mode():
 
     args.DistributedDataParallel = True
 
+    if torch is None:
+        raise ImportError("Distributed mode requires torch to be installed.")
+
     torch.cuda.set_device(gpu)
     print('distributed init (rank {}, word {})'.format(rank, world_size), flush=True)
     torch.distributed.init_process_group(
@@ -54,6 +63,9 @@ def init_distributed_mode():
 def manual_init_distributed_mode(rank, world_size, local_rank):
     args.DistributedDataParallel = True
     args.batchSize = 1
+
+    if torch is None:
+        raise ImportError("Distributed mode requires torch to be installed.")
 
     gpu = local_rank
     torch.cuda.set_device(gpu)
@@ -118,5 +130,4 @@ def FromPortGetPid(port: int):
         pass
 
     return pid
-
 

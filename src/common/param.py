@@ -11,8 +11,6 @@ import os
 import datetime
 from pathlib import Path
 from utils.CN import CN
-
-import transformers
 from dataclasses import dataclass, field
 from typing import List, Optional
 

@@ -134,7 +134,7 @@ class AirVLNSimulatorClientTool:
                 if self.airsim_clients[index_1][index_2] is not None:
                     confirmed = False
                     count = 0
-                    while not confirmed and count < 30:
+                    while not confirmed and count < 120:
                         try:
                             self.airsim_clients[index_1][index_2].confirmConnection()
                             self.airsim_clients[index_1][index_2].enableApiControl(True)

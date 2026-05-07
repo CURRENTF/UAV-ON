@@ -1,8 +1,8 @@
-import torch
+from typing import Any
 
 class BaseModelWrapper:
     def __init__(self):
-        self.model: torch.Module = None
+        self.model: Any = None
         pass
     
     def prepare_inputs(self, episodes):

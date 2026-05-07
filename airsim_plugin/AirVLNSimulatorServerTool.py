@@ -12,6 +12,7 @@ import subprocess
 import errno
 import signal
 import copy
+import shlex
 
 
 AIRSIM_SETTINGS_TEMPLATE = {
@@ -387,6 +388,56 @@ def KillAirVLN() -> None:
     return
 
 
+def build_unreal_command(env_path, gpu_id, unreal_log_path, settings_path):
+    command = (
+        "bash {env_path} -RenderOffscreen -NoSound -NoVSync "
+        "-GraphicsAdapter={gpu_id} -stdout -FullStdOutLogOutput "
+        "-Abslog={unreal_log_path} --settings={settings_path}"
+    ).format(
+        env_path=shlex.quote(str(env_path)),
+        gpu_id=int(gpu_id),
+        unreal_log_path=shlex.quote(str(unreal_log_path)),
+        settings_path=shlex.quote(str(settings_path)),
+    )
+
+    # UE4 packaged Linux builds refuse to run as root. On root-based
+    # containers, launch only the Unreal process as a regular user.
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        unreal_user = os.environ.get("UAV_ON_UNREAL_USER", "uavonrunner")
+        user_exists = subprocess.call(
+            "id -u {}".format(shlex.quote(unreal_user)),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            shell=True,
+        ) == 0
+        if user_exists:
+            home_dir = os.environ.get("UAV_ON_UNREAL_HOME", "/tmp/{}-home".format(unreal_user))
+            runtime_dir = os.environ.get("UAV_ON_UNREAL_RUNTIME_DIR", "/tmp/{}-runtime".format(unreal_user))
+            os.makedirs(home_dir, exist_ok=True)
+            os.makedirs(runtime_dir, exist_ok=True)
+            os.chmod(runtime_dir, 0o700)
+            subprocess.call(
+                "chown -R {user}:{user} {home} {runtime}".format(
+                    user=shlex.quote(unreal_user),
+                    home=shlex.quote(home_dir),
+                    runtime=shlex.quote(runtime_dir),
+                ),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                shell=True,
+            )
+            command = (
+                "setsid -f runuser -u {user} -- env HOME={home} XDG_RUNTIME_DIR={runtime} {command}"
+            ).format(
+                user=shlex.quote(unreal_user),
+                home=shlex.quote(home_dir),
+                runtime=shlex.quote(runtime_dir),
+                command=command,
+            )
+
+    return command
+
+
 class EventHandler(object):
     def __init__(self):
         scene_ports = []
@@ -482,7 +533,7 @@ class EventHandler(object):
                 continue
             else:
                 unreal_log_path = "/tmp/uav_on_unreal_{}.log".format(ports[index])
-                subprocess_execute = "bash {}  -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} -stdout -FullStdOutLogOutput -Abslog={} --settings={}".format(
+                subprocess_execute = build_unreal_command(
                     choose_env_exe_paths[index],
                     gpu_id,
                     unreal_log_path,
@@ -525,7 +576,7 @@ class EventHandler(object):
     
 
         unreal_log_path = "/tmp/uav_on_unreal_{}.log".format(port)
-        subprocess_execute = "bash {} -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} -stdout -FullStdOutLogOutput -Abslog={} -settings={} ".format(
+        subprocess_execute = build_unreal_command(
                     env_path,
                     gpu_id,
                     unreal_log_path,

@@ -44,13 +44,44 @@ Watch a full successful flight of our Aerial ObjectNav Agent in action:
 
 ## Getting Started
 
-- **Step1: Install all dependencies**
+- **Step1: Configure the Python environment**
+
+    For the full AOA/CLIP baselines, install all dependencies:
 
     ```bash
     conda create -n uavon python==3.8
     conda activate uavon
     pip install -r requirements.txt
     ```
+
+    For the 3D A* oracle baseline, a lighter AirSim-focused environment is enough. This avoids installing large model dependencies such as PyTorch and Transformers when only the simulator, collision checks, and voxel grid generation are needed:
+
+    ```bash
+    # Optional: remove a large unused environment first.
+    conda env remove -n vllm -y
+
+    conda create -n uavon python==3.8 -y
+    conda activate uavon
+
+    # AirSim 1.8.1 imports numpy and msgpackrpc during setup metadata generation,
+    # so install these first instead of relying on requirements.txt order.
+    pip install numpy==1.24.4 msgpack-python==0.5.6 msgpack-rpc-python==0.4.1
+
+    # Minimal dependencies for AirSim server/client and the A* oracle.
+    pip install airsim==1.8.1 opencv-contrib-python==4.8.0.76 tqdm==4.66.1 attrs==23.1.0
+    pip install yacs==0.1.8 numba==0.57.1 llvmlite==0.40.1
+    ```
+
+    Verify the A* simulation stack:
+
+    ```bash
+    python -c "import airsim; print(airsim.__version__, hasattr(airsim.MultirotorClient, 'simCreateVoxelGrid'))"
+    python src/eval_astar.py --help
+    python airsim_plugin/AirVLNSimulatorServerTool.py --help
+    pip check
+    ```
+
+    `simCreateVoxelGrid` must print `True`; the A* oracle uses this AirSim API to create binvox occupancy grids for planning.
 
 - **Step2: Prepare the simulation environment**
 

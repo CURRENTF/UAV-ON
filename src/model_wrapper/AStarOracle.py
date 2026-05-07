@@ -309,9 +309,13 @@ class AStarOracle(BaseModelWrapper):
 
         configured_voxel_dir = getattr(args, "astar_voxel_dir", None)
         voxel_dir = configured_voxel_dir or os.path.join(args.eval_save_path, "astar_voxels")
-        self.voxel_dir = Path(voxel_dir).expanduser()
+        self.voxel_dir = Path(voxel_dir).expanduser().resolve()
         if bool(getattr(args, "astar_keep_voxels", False)):
             self.voxel_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(self.voxel_dir, 0o777)
+            except OSError:
+                pass
 
     def _client_for_batch_index(self, env: Any, batch_index: int) -> Any:
         cursor = 0

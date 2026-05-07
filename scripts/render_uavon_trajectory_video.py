@@ -123,8 +123,10 @@ def main():
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--settle-seconds", type=float, default=0.2)
     parser.add_argument("--individual", action="store_true", help="Also write one mp4 per camera")
+    parser.add_argument("--offset", default="0,0,0", help="Comma-separated offset to add to trajectory positions (x,y,z)")
     args = parser.parse_args()
 
+    offset = [float(v) for v in args.offset.split(",")]
     cameras = _parse_csv(args.cameras)
     labels = _parse_csv(args.camera_labels)
     if len(labels) != len(cameras):
@@ -133,6 +135,9 @@ def main():
         raise ValueError("The 2x2 grid renderer supports at most four cameras")
 
     frames = _load_trajectory(args.trajectory, args.stride, args.max_frames)
+    for frame in frames:
+        pos = frame["sensors"]["state"]["position"]
+        frame["sensors"]["state"]["position"] = [pos[0] + offset[0], pos[1] + offset[1], pos[2] + offset[2]]
     client = airsim.MultirotorClient(ip=args.ip, port=args.port, timeout_value=args.timeout)
     client.confirmConnection()
     vehicles = client.listVehicles()

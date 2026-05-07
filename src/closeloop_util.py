@@ -8,7 +8,12 @@ import copy
 import numpy as np
 from utils.utils import *
 from src.common.param import args
-import torch.backends.cudnn as cudnn
+try:
+    import torch
+    import torch.backends.cudnn as cudnn
+except ImportError:
+    torch = None
+    cudnn = None
 from src.env_uav import AirVLNENV
 
 
@@ -17,12 +22,14 @@ def setup(dagger_it=0, manual_init_distributed_mode=False):
         init_distributed_mode()
 
     seed = 100 + get_rank() + dagger_it
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
+    if torch is not None:
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
-    cudnn.benchmark = False
-    cudnn.deterministic = False
+    if cudnn is not None:
+        cudnn.benchmark = False
+        cudnn.deterministic = False
 
 
 def initialize_env(dataset_path, save_path, train_json_path, activate_maps=[]):
