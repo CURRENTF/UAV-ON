@@ -48,7 +48,7 @@ def main():
         episode = json.load(handle)[0]
     target = np.asarray(episode["pose"][0], dtype=np.float32)
     start = np.asarray(episode["start_pose"]["start_position"], dtype=np.float32)
-    positions = np.asarray([frame["position"] for frame in frames], dtype=np.float32) + start[None, :]
+    positions = np.asarray([frame["position"] for frame in frames], dtype=np.float32)
     all_points = np.concatenate([positions, start[None, :], target[None, :]], axis=0)
     min_xy = all_points[:, :2].min(axis=0) - 5.0
     max_xy = all_points[:, :2].max(axis=0) + 5.0

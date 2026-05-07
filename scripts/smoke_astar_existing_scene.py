@@ -35,19 +35,21 @@ def _pose_from_dataset(item):
     )
 
 
-def _frame(client, frame_index, action, step_size, vehicle_name):
+def _frame(client, frame_index, action, step_size, vehicle_name, target_pos):
     state = client.getMultirotorState(vehicle_name=vehicle_name)
     pose = state.kinematics_estimated
     collision = client.simGetCollisionInfo(vehicle_name=vehicle_name)
     position = pose.position
     orientation = pose.orientation
+    curr = np.array([position.x_val, position.y_val, position.z_val])
+    dist = np.linalg.norm(curr - np.array(target_pos))
     return {
         "frame": frame_index,
         "is_collision": bool(collision.has_collided),
         "action": action,
         "steps_size": float(step_size),
         "move_distance": 0.0,
-        "distance_to_end": 0.0,
+        "distance_to_end": float(dist),
         "sensors": {
             "state": {
                 "position": [position.x_val, position.y_val, position.z_val],
@@ -141,6 +143,8 @@ def main():
         item = json.load(handle)[0]
     item = dict(item)
     item["task_id"] = item.get("episode_id", 0)
+    # Move drone up by 2 meters to avoid "occupied start voxel" error
+    item["start_pose"]["start_position"][2] -= 2.0
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -166,6 +170,8 @@ def main():
     time.sleep(0.5)
     client.simPause(True)
     print("initial pose ready", flush=True)
+
+    target_pos = item["pose"][0] if isinstance(item["pose"][0], list) else item["pose"]
 
     fake_env = SimpleNamespace(
         machines_info=[{"open_scenes": [item["map_name"]]}],
@@ -193,16 +199,16 @@ def main():
     if "failed" in oracle.plan_summaries[0]:
         raise RuntimeError(oracle.plan_summaries[0])
 
-    frames = [_frame(client, 0, "start", 0.0, vehicle_name)]
+    frames = [_frame(client, 0, "start", 0.0, vehicle_name, target_pos)]
     for step in range(args.max_actions):
         actions, step_sizes, dones = oracle.run([0], fixed=False)
         action, step_size = actions[0], step_sizes[0]
         print(f"step={step} action={action} step_size={step_size}", flush=True)
         if dones[0]:
-            frames.append(_frame(client, len(frames), action, step_size, vehicle_name))
+            frames.append(_frame(client, len(frames), action, step_size, vehicle_name, target_pos))
             break
         _move(client, action, step_size, vehicle_name)
-        frames.append(_frame(client, len(frames), action, step_size, vehicle_name))
+        frames.append(_frame(client, len(frames), action, step_size, vehicle_name, target_pos))
 
     with trajectory_path.open("w") as handle:
         for frame in frames:
