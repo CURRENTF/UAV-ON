@@ -147,6 +147,46 @@ Watch a full successful flight of our Aerial ObjectNav Agent in action:
   pip install msgpack-rpc-python
   ```
 
+### 3D A* Trajectory Videos
+
+The repository includes helper scripts for debugging and visualizing the 3D A* oracle on an already-open AirSim scene:
+
+```bash
+# Launch the test AirSim server. Use a real NVIDIA adapter for image capture.
+UAV_ON_DATA_ROOT=/path/to/uav-on-data \
+UAV_ON_SIM_PORT=30000 \
+UAV_ON_SERVER_GPUS=0 \
+bash scripts/start_server_test.sh
+
+# After the CityPark_test scene is open, run a full A* rollout.
+# The first AirSim scene port is normally UAV_ON_SIM_PORT + 100.
+python scripts/smoke_astar_existing_scene.py \
+  --dataset astar_smoke_citypark_1.json \
+  --output-dir astar_logs/full_citypark_episode0 \
+  --port 30100 \
+  --max-actions 100
+
+# Render a four-camera 2x2 video from trajectory.jsonl.
+python scripts/render_uavon_trajectory_video.py \
+  --trajectory astar_logs/full_citypark_episode0/log/trajectory.jsonl \
+  --output astar_logs/full_citypark_episode0/astar_citypark_4view_full.mp4 \
+  --port 30100 \
+  --offset 0,0,0 \
+  --fps 10
+
+# Render a top-down OpenCV trajectory video that does not require UE image capture.
+python scripts/render_trajectory_topdown_video.py \
+  --trajectory astar_logs/full_citypark_episode0/log/trajectory.jsonl \
+  --dataset astar_smoke_citypark_1.json \
+  --output astar_logs/full_citypark_episode0/astar_citypark_topdown_full.mp4
+```
+
+For real four-view video generation, Unreal must render with the NVIDIA GPU. `AirVLNSimulatorServerTool.py` starts packaged UE scenes with `-RenderOffscreen`, `-NoSound`, `-NoVSync`, and `-GraphicsAdapter=<gpu_id>`. In root-based containers, the tool launches only the Unreal process through the `uavonrunner` user because packaged UE4 Linux builds refuse to run as root. If `simGetImages` hangs, returns empty frames, or UE logs show `RenderThread` timeouts, check that the server was launched with a valid GPU id and that Vulkan/OpenGL did not fall back to `llvmpipe`.
+
+`render_uavon_trajectory_video.py --offset` is only for trajectories saved in local coordinates. Use `--offset 0,0,0` for trajectories produced by `scripts/smoke_astar_existing_scene.py`, because the updated smoke script writes global AirSim poses. If replaying an older local-coordinate trajectory, pass the global start position as `--offset`, for example `--offset=-363.7956,-311.0911,-10.0`.
+
+The earlier pure-white top-down video issue was caused by mixing local trajectory coordinates with global dataset start/target coordinates, which made the path collapse into a nearly invisible point on a large white canvas. The current renderer expects global trajectory positions and plots the start, target, and UAV path in the same coordinate frame.
+
 
 
 
