@@ -24,6 +24,7 @@ method/
 *_logs/
 
 # Optional: Ignore logs or temp files
+/logs/
 *.log
 *.jsonl
 
