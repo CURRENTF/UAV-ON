@@ -438,6 +438,15 @@ def build_unreal_command(env_path, gpu_id, unreal_log_path, settings_path):
     return command
 
 
+def make_settings_readable_for_unreal(settings_path):
+    settings_path = Path(settings_path)
+    try:
+        os.chmod(settings_path.parent, 0o755)
+        os.chmod(settings_path, 0o644)
+    except OSError as exc:
+        print(f"warning: could not relax settings permissions for Unreal: {exc}", flush=True)
+
+
 class EventHandler(object):
     def __init__(self):
         scene_ports = []
@@ -525,8 +534,10 @@ class EventHandler(object):
             airsim_settings_write_content = json.dumps(airsim_settings)
             if not os.path.exists(str(CWD_DIR / 'settings' / str(ports[index]))):
                 os.makedirs(str(CWD_DIR / 'settings' / str(ports[index])), exist_ok=True)
-            with open(str(CWD_DIR / 'settings' / str(ports[index]) / 'settings.json'), 'w', encoding='utf-8') as dump_f:
+            settings_path = str(CWD_DIR / 'settings' / str(ports[index]) / 'settings.json')
+            with open(settings_path, 'w', encoding='utf-8') as dump_f:
                 dump_f.write(airsim_settings_write_content)
+            make_settings_readable_for_unreal(settings_path)
             # open scene 5
             if choose_env_exe_paths[index] is None:
                 p_s.append(None)
@@ -537,7 +548,7 @@ class EventHandler(object):
                     choose_env_exe_paths[index],
                     gpu_id,
                     unreal_log_path,
-                    str(CWD_DIR / 'settings' / str(ports[index]) / 'settings.json'),
+                    settings_path,
                 )
                 time.sleep(3)
                 print(subprocess_execute)
@@ -576,11 +587,13 @@ class EventHandler(object):
     
 
         unreal_log_path = "/tmp/uav_on_unreal_{}.log".format(port)
+        settings_path = str(CWD_DIR / 'settings' / str(port) / 'settings.json')
+        make_settings_readable_for_unreal(settings_path)
         subprocess_execute = build_unreal_command(
                     env_path,
                     gpu_id,
                     unreal_log_path,
-                    str(CWD_DIR / 'settings' / str(port) / 'settings.json'),
+                    settings_path,
                 )
         time.sleep(1)
         print(subprocess_execute)

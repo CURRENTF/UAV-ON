@@ -122,6 +122,11 @@ def main():
     parser.add_argument("--max-frames", type=int, default=0)
     parser.add_argument("--timeout", type=float, default=300.0)
     parser.add_argument("--settle-seconds", type=float, default=0.2)
+    parser.add_argument(
+        "--simulate-settle",
+        action="store_true",
+        help="Unpause physics briefly after setting each pose. Off by default for faithful trajectory replay.",
+    )
     parser.add_argument("--individual", action="store_true", help="Also write one mp4 per camera")
     parser.add_argument("--offset", default="0,0,0", help="Comma-separated offset to add to trajectory positions (x,y,z)")
     args = parser.parse_args()
@@ -152,9 +157,10 @@ def main():
     try:
         for idx, frame in enumerate(frames):
             pose = _pose_from_frame(frame)
-            client.simPause(False)
+            client.simPause(False if args.simulate_settle else True)
             client.simSetVehiclePose(pose, ignore_collision=True, vehicle_name=vehicle_name)
-            time.sleep(args.settle_seconds)
+            if args.simulate_settle:
+                time.sleep(args.settle_seconds)
             requests = [
                 airsim.ImageRequest(camera, airsim.ImageType.Scene, pixels_as_float=False, compress=True)
                 for camera in cameras
