@@ -164,7 +164,8 @@ python scripts/smoke_astar_existing_scene.py \
   --dataset astar_smoke_citypark_1.json \
   --output-dir astar_logs/full_citypark_episode0 \
   --port 30100 \
-  --max-actions 100
+  --max-actions 100 \
+  --execution-mode kinematic
 
 # Render a four-camera 2x2 video from trajectory.jsonl.
 python scripts/render_uavon_trajectory_video.py \
@@ -184,6 +185,8 @@ python scripts/render_trajectory_topdown_video.py \
 For real four-view video generation, Unreal must render with the NVIDIA GPU. `AirVLNSimulatorServerTool.py` starts packaged UE scenes with `-RenderOffscreen`, `-NoSound`, `-NoVSync`, and `-GraphicsAdapter=<gpu_id>`. In root-based containers, the tool launches only the Unreal process through the `uavonrunner` user because packaged UE4 Linux builds refuse to run as root. If `simGetImages` hangs, returns empty frames, or UE logs show `RenderThread` timeouts, check that the server was launched with a valid GPU id and that Vulkan/OpenGL did not fall back to `llvmpipe`.
 
 `render_uavon_trajectory_video.py` replays trajectory poses while the simulator is paused, so the video reflects the saved trajectory instead of letting physics settle the drone into nearby geometry. Add `--simulate-settle` only when you explicitly want to unpause after each pose and inspect physics-side behavior.
+
+`scripts/smoke_astar_existing_scene.py` also defaults to kinematic execution for the same reason: it records the A* path as commanded poses for visualization. Use `--execution-mode physics` only when diagnosing SimpleFlight physics or collision behavior; physics mode can diverge from the planned A* path in scenes with incomplete collision geometry.
 
 `render_uavon_trajectory_video.py --offset` is only for trajectories saved in local coordinates. Use `--offset 0,0,0` for trajectories produced by `scripts/smoke_astar_existing_scene.py`, because the updated smoke script writes global AirSim poses. If replaying an older local-coordinate trajectory, pass the global start position as `--offset`, for example `--offset=-363.7956,-311.0911,-10.0`.
 

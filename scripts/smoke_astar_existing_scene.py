@@ -35,6 +35,23 @@ def _pose_from_dataset(item):
     )
 
 
+def _pose_from_state(client, vehicle_name):
+    state = client.getMultirotorState(vehicle_name=vehicle_name).kinematics_estimated
+    return airsim.Pose(
+        airsim.Vector3r(
+            float(state.position.x_val),
+            float(state.position.y_val),
+            float(state.position.z_val),
+        ),
+        airsim.Quaternionr(
+            x_val=float(state.orientation.x_val),
+            y_val=float(state.orientation.y_val),
+            z_val=float(state.orientation.z_val),
+            w_val=float(state.orientation.w_val),
+        ),
+    )
+
+
 def _frame(client, frame_index, action, step_size, vehicle_name, target_pos):
     state = client.getMultirotorState(vehicle_name=vehicle_name)
     pose = state.kinematics_estimated
@@ -108,11 +125,17 @@ def _next_pose(current_pose, action, step_size):
     ), fly_type
 
 
-def _move(client, action, step_size, vehicle_name):
+def _move(client, action, step_size, vehicle_name, execution_mode):
     if action == "stop":
         return
-    current_pose = client.simGetVehiclePose(vehicle_name=vehicle_name)
+    current_pose = _pose_from_state(client, vehicle_name)
     next_pose, fly_type = _next_pose(current_pose, action, step_size)
+    if execution_mode == "kinematic":
+        if fly_type != "none":
+            client.simPause(True)
+            client.simSetVehiclePose(next_pose, ignore_collision=True, vehicle_name=vehicle_name)
+        return
+
     client.simPause(False)
     if fly_type == "move":
         client.moveToPositionAsync(
@@ -137,6 +160,12 @@ def main():
     parser.add_argument("--port", type=int, default=30100)
     parser.add_argument("--max-actions", type=int, default=8)
     parser.add_argument("--voxel-resolution", type=float, default=2.0)
+    parser.add_argument(
+        "--execution-mode",
+        choices=("kinematic", "physics"),
+        default="kinematic",
+        help="Use kinematic pose updates for faithful A* path visualization, or physics for SimpleFlight diagnostics.",
+    )
     args = parser.parse_args()
 
     with open(args.dataset, "r") as handle:
@@ -148,6 +177,7 @@ def main():
 
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(output_dir, 0o755)
     voxel_dir = output_dir / "voxels"
     voxel_dir.mkdir(parents=True, exist_ok=True)
     os.chmod(voxel_dir, 0o777)
@@ -163,12 +193,14 @@ def main():
     vehicle_name = vehicles[0] if vehicles else "Drone_1"
 
     print("setting initial pose", flush=True)
-    client.simPause(False)
     client.enableApiControl(True, vehicle_name=vehicle_name)
     client.armDisarm(True, vehicle_name=vehicle_name)
-    client.simSetVehiclePose(_pose_from_dataset(item), ignore_collision=True, vehicle_name=vehicle_name)
-    time.sleep(0.5)
     client.simPause(True)
+    client.simSetVehiclePose(_pose_from_dataset(item), ignore_collision=True, vehicle_name=vehicle_name)
+    if args.execution_mode == "physics":
+        client.simPause(False)
+        time.sleep(0.5)
+        client.simPause(True)
     print("initial pose ready", flush=True)
 
     target_pos = item["pose"][0] if isinstance(item["pose"][0], list) else item["pose"]
@@ -198,6 +230,8 @@ def main():
     print(oracle.plan_summaries[0], flush=True)
     if "failed" in oracle.plan_summaries[0]:
         raise RuntimeError(oracle.plan_summaries[0])
+    client.simPause(True)
+    client.simSetVehiclePose(_pose_from_dataset(item), ignore_collision=True, vehicle_name=vehicle_name)
 
     frames = [_frame(client, 0, "start", 0.0, vehicle_name, target_pos)]
     for step in range(args.max_actions):
@@ -207,7 +241,7 @@ def main():
         if dones[0]:
             frames.append(_frame(client, len(frames), action, step_size, vehicle_name, target_pos))
             break
-        _move(client, action, step_size, vehicle_name)
+        _move(client, action, step_size, vehicle_name, args.execution_mode)
         frames.append(_frame(client, len(frames), action, step_size, vehicle_name, target_pos))
 
     with trajectory_path.open("w") as handle:
