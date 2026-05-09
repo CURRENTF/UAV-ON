@@ -334,6 +334,10 @@ class AStarOracle(BaseModelWrapper):
 
         handle = tempfile.NamedTemporaryFile(prefix="uav_on_astar_", suffix=".binvox", delete=False)
         handle.close()
+        try:
+            os.chmod(handle.name, 0o666)
+        except OSError:
+            pass
         return Path(handle.name), True
 
     def _list_vehicle_name(self, client: Any) -> str:

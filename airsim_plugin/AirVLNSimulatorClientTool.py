@@ -202,7 +202,9 @@ class AirVLNSimulatorClientTool:
             
             assert len(result[1]) == 2, '打开场景失败'
             print('waiting for airsim connection...')
-            time.sleep(3 * len(self.machines_info[index]['open_scenes']) + 15)
+            default_boot_seconds = 3 * len(self.machines_info[index]['open_scenes']) + 15
+            boot_seconds = float(os.environ.get("UAV_ON_SCENE_BOOT_SECONDS", default_boot_seconds))
+            time.sleep(boot_seconds)
             ip = result[1][0]
             ports = result[1][1]
             if isinstance(ip, bytes):
@@ -299,6 +301,7 @@ class AirVLNSimulatorClientTool:
             imu_sensor = Imu(airsim_client, drone_name=vehicle_name, imu_name="Imu")
             airsim_client.simPause(False)
             future = None
+            action_timeout_sec = float(os.environ.get("UAV_ON_ACTION_TIMEOUT_SECONDS", "12"))
 
             if fly_type == 'move':
                 drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom
@@ -307,13 +310,18 @@ class AirVLNSimulatorClientTool:
                     pose.position.y_val,
                     pose.position.z_val,
                     velocity=1,
+                    timeout_sec=action_timeout_sec,
                     drivetrain=drivetrain,
                     vehicle_name=vehicle_name,
                 )
 
             elif fly_type == 'rotate':
                 (pitch, roll, yaw) = airsim.to_eularian_angles(pose.orientation)
-                future = airsim_client.rotateToYawAsync(math.degrees(yaw), vehicle_name=vehicle_name)
+                future = airsim_client.rotateToYawAsync(
+                    math.degrees(yaw),
+                    timeout_sec=action_timeout_sec,
+                    vehicle_name=vehicle_name,
+                )
 
             if future is not None:
                 future.join()
@@ -376,16 +384,22 @@ class AirVLNSimulatorClientTool:
                 return
             vehicles = airsim_client.listVehicles()
             vehicle_name = vehicles[0] if vehicles else ''
-            print(f"set pose vehicle={vehicle_name} target={pose.position}", flush=True)
-            airsim_client.simPause(False)
+            verbose_pose = os.environ.get("UAV_ON_VERBOSE_POSE", "").lower() in {"1", "true", "yes"}
+            if verbose_pose:
+                print(f"set pose vehicle={vehicle_name} target={pose.position}", flush=True)
+            settle_seconds = float(os.environ.get("UAV_ON_SET_POSE_SETTLE_SECONDS", "0.2"))
+            airsim_client.simPause(True)
             airsim_client.simSetVehiclePose(pose=pose, ignore_collision=True, vehicle_name=vehicle_name)
             if vehicle_name:
                 airsim_client.simSetObjectScale(vehicle_name, airsim.Vector3r(0.5, 0.5, 0.5))
-            time.sleep(0.2)
+            if settle_seconds > 0:
+                airsim_client.simPause(False)
+                time.sleep(settle_seconds)
             airsim_client.simPause(True)
             try:
                 state = airsim_client.getMultirotorState(vehicle_name=vehicle_name)
-                print(f"set pose done vehicle={vehicle_name} state={state.kinematics_estimated.position}", flush=True)
+                if verbose_pose:
+                    print(f"set pose done vehicle={vehicle_name} state={state.kinematics_estimated.position}", flush=True)
             except Exception:
                 pass
             return
@@ -429,8 +443,12 @@ class AirVLNSimulatorClientTool:
                     for camera_name in cameras:
                         ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.Scene, pixels_as_float=False, compress=True))
                         ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.DepthPerspective, pixels_as_float=True, compress=False))
-                    airsim_client.simPause(False)
-                    time.sleep(0.2)
+                    image_settle_seconds = float(os.environ.get("UAV_ON_IMAGE_SETTLE_SECONDS", "0.2"))
+                    if image_settle_seconds > 0:
+                        airsim_client.simPause(False)
+                        time.sleep(image_settle_seconds)
+                    else:
+                        airsim_client.simPause(True)
                     image_datas = airsim_client.simGetImages(requests=ImageRequest)
                     airsim_client.simPause(True)
                     images, depth_images = [], []

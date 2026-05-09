@@ -388,7 +388,26 @@ def KillAirVLN() -> None:
     return
 
 
+def KillPackagedUAVOnScenes() -> None:
+    patterns = [
+        r"UAV-ON-train-unpacked/.+Linux-Shipping",
+        r"UAV-ON-test-unpacked/.+Linux-Shipping",
+    ]
+    for pattern in patterns:
+        try:
+            subprocess.call(
+                ["pkill", "-9", "-f", pattern],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as exc:
+            print(f"warning: failed to kill packaged UAV-ON scenes for {pattern}: {exc}", flush=True)
+    time.sleep(1)
+
+
 def build_unreal_command(env_path, gpu_id, unreal_log_path, settings_path):
+    settings_path_obj = Path(settings_path)
+    runtime_suffix = settings_path_obj.parent.name
     command = (
         "bash {env_path} -RenderOffscreen -NoSound -NoVSync "
         "-GraphicsAdapter={gpu_id} -stdout -FullStdOutLogOutput "
@@ -411,8 +430,10 @@ def build_unreal_command(env_path, gpu_id, unreal_log_path, settings_path):
             shell=True,
         ) == 0
         if user_exists:
-            home_dir = os.environ.get("UAV_ON_UNREAL_HOME", "/tmp/{}-home".format(unreal_user))
-            runtime_dir = os.environ.get("UAV_ON_UNREAL_RUNTIME_DIR", "/tmp/{}-runtime".format(unreal_user))
+            default_home = "/tmp/{}-home-{}".format(unreal_user, runtime_suffix)
+            default_runtime = "/tmp/{}-runtime-{}".format(unreal_user, runtime_suffix)
+            home_dir = os.environ.get("UAV_ON_UNREAL_HOME", default_home)
+            runtime_dir = os.environ.get("UAV_ON_UNREAL_RUNTIME_DIR", default_runtime)
             os.makedirs(home_dir, exist_ok=True)
             os.makedirs(runtime_dir, exist_ok=True)
             os.chmod(runtime_dir, 0o700)
@@ -476,6 +497,7 @@ class EventHandler(object):
                 str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())),
             )
         )
+        KillPackagedUAVOnScenes()
         KillPorts(self.scene_used_ports)
         self.scene_used_ports = []
         print(
@@ -643,6 +665,7 @@ class EventHandler(object):
         )
 
         try:
+            KillPackagedUAVOnScenes()
             KillPorts(self.scene_used_ports)
             self.scene_used_ports = []
 

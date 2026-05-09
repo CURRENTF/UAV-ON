@@ -93,7 +93,12 @@ class AirVLNENV:
 
     def init_VectorEnvUtil(self):
         self.delete_VectorEnvUtil()
-        self.VectorEnvUtil = VectorEnvUtil(self.scenes, self.batch_size)
+        vector_start_method = os.environ.get("UAV_ON_VECTOR_ENV_START_METHOD", "forkserver")
+        self.VectorEnvUtil = VectorEnvUtil(
+            self.scenes,
+            self.batch_size,
+            multiprocessing_start_method=vector_start_method,
+        )
 
     def delete_VectorEnvUtil(self):
         if hasattr(self, 'VectorEnvUtil'):
@@ -352,10 +357,23 @@ class AirVLNENV:
                 format_fly_type[index1].append(fly_types[cnt])
                 cnt += 1
         
-        result = self.simulator_tool.move_to_next_pose(poses_list=format_pose, fly_types=format_fly_type)
+        if os.environ.get("UAV_ON_KINEMATIC_ACTIONS", "").lower() in {"1", "true", "yes"}:
+            set_ok = self.simulator_tool.setPoses(poses=format_pose)
+            result = [
+                [{"collision": False} for _ in item["open_scenes"]]
+                for item in self.machines_info
+            ]
+            if not set_ok:
+                result = None
+        else:
+            result = self.simulator_tool.move_to_next_pose(poses_list=format_pose, fly_types=format_fly_type)
         
         if not result:
             logger.error('move_to_next_pose error')
+            result = [
+                [{"collision": True} for _ in item["open_scenes"]]
+                for item in self.machines_info
+            ]
 
         cnt=0
         for index1, item in enumerate(self.machines_info):
