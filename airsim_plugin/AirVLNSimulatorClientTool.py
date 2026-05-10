@@ -436,13 +436,15 @@ class AirVLNSimulatorClientTool:
             if airsim_client is None:
                 raise Exception('client is None.')
                 return None, None
+            rgb_only = os.environ.get("UAV_ON_RGB_ONLY", "").lower() in {"1", "true", "yes"}
             time_sleep_cnt = 0
             while True:
                 try:
                     ImageRequest = []
                     for camera_name in cameras:
                         ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.Scene, pixels_as_float=False, compress=True))
-                        ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.DepthPerspective, pixels_as_float=True, compress=False))
+                        if not rgb_only:
+                            ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.DepthPerspective, pixels_as_float=True, compress=False))
                     image_settle_seconds = float(os.environ.get("UAV_ON_IMAGE_SETTLE_SECONDS", "0.2"))
                     if image_settle_seconds > 0:
                         airsim_client.simPause(False)
@@ -453,11 +455,17 @@ class AirVLNSimulatorClientTool:
                     airsim_client.simPause(True)
                     images, depth_images = [], []
                     for idx, camera_name in enumerate(cameras):
-                        rgb_resp = image_datas[2 * idx]
+                        if rgb_only:
+                            rgb_resp = image_datas[idx]
+                        else:
+                            rgb_resp = image_datas[2 * idx]
                         image = rgb_resp.image_data_uint8
-                        depth_resp = image_datas[2* idx + 1]
-                        depth_img_in_meters = airsim.list_to_2d_float_array(depth_resp.image_data_float, depth_resp.width, depth_resp.height)
-                        depth_image = (np.clip(depth_img_in_meters, 0, 100) / 100 * 255).astype(np.uint8)
+                        if rgb_only:
+                            depth_image = None
+                        else:
+                            depth_resp = image_datas[2* idx + 1]
+                            depth_img_in_meters = airsim.list_to_2d_float_array(depth_resp.image_data_float, depth_resp.width, depth_resp.height)
+                            depth_image = (np.clip(depth_img_in_meters, 0, 100) / 100 * 255).astype(np.uint8)
                         images.append(image)
                         depth_images.append(depth_image)
                     break

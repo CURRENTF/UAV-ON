@@ -22,6 +22,48 @@ from utils.env_utils_uav import SimState, getNextPosition
 from utils.env_vector_uav import VectorEnvUtil
 
 
+class InlineVectorEnvUtil:
+    """Minimal in-process replacement for VectorEnvUtil for A* data generation."""
+
+    def __init__(self, num_envs: int) -> None:
+        self._num_envs = int(num_envs)
+        self.batch = None
+
+    def set_batch(self, batch):
+        self.batch = copy.deepcopy(batch)
+
+    def get_obs(self, obs_states):
+        obs = []
+        states = []
+        for index, (rgb_images, depth_images, state) in enumerate(obs_states):
+            if self.batch is None:
+                raise RuntimeError("batch is None")
+            if index >= self._num_envs:
+                raise IndexError(f"obs index {index} outside {self._num_envs} inline envs")
+            observations = [info for info in state.trajectory[-5:]]
+            observations[-1]['description'] = state.task_info['description']
+            observations[-1]['object_name'] = state.task_info['object_name']
+            observations[-1]['object_size'] = state.task_info['object_size']
+            observations[-1]['rgb'] = rgb_images
+            observations[-1]['depth'] = depth_images
+            observations[-1]['pre_poses'] = [item['sensors']['state'] for item in state.trajectory[-10:]]
+            observations[-1]['step'] = state.step
+            observations[-1]['move_distance'] = state.move_distance
+            observations[-1]['start_position'] = state.start_pose['start_position']
+            observations[-1]['start_quaternionr'] = state.start_pose['start_quaternionr']
+            if state.heading_changes:
+                avg_heading = sum(state.heading_changes) / len(state.heading_changes)
+            else:
+                avg_heading = 0.0
+            observations[-1]['avg_heading_changes'] = round(avg_heading, 2)
+            obs.append((observations, state.is_end, state.is_collisioned, state.oracle_success))
+            states.append(state)
+        return obs, states
+
+    def close(self) -> None:
+        return
+
+
 
 class AirVLNENV:
     def __init__(self, batch_size=8, 
@@ -93,6 +135,9 @@ class AirVLNENV:
 
     def init_VectorEnvUtil(self):
         self.delete_VectorEnvUtil()
+        if os.environ.get("UAV_ON_INLINE_VECTOR_ENV", "").lower() in {"1", "true", "yes"}:
+            self.VectorEnvUtil = InlineVectorEnvUtil(self.batch_size)
+            return
         vector_start_method = os.environ.get("UAV_ON_VECTOR_ENV_START_METHOD", "forkserver")
         self.VectorEnvUtil = VectorEnvUtil(
             self.scenes,

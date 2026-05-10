@@ -105,7 +105,8 @@ def _make_fourview_grid(images: list[Any]) -> Image.Image:
 def _save_image(observation: dict[str, Any], output_path: Path, quality: int) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     grid = _make_fourview_grid(observation["rgb"])
-    grid.save(output_path, format="JPEG", quality=quality, optimize=True)
+    optimize = os.environ.get("UAV_ON_JPEG_OPTIMIZE", "1").lower() in {"1", "true", "yes"}
+    grid.save(output_path, format="JPEG", quality=quality, optimize=optimize)
 
 
 def _record_sample(
@@ -151,6 +152,13 @@ def _write_stats(stats_path: Path, stats: dict[str, Any]) -> None:
     tmp_path.replace(stats_path)
 
 
+def _add_timing(stats: dict[str, Any], name: str, elapsed: float) -> None:
+    timings = stats.setdefault("timings", {})
+    item = timings.setdefault(name, {"seconds": 0.0, "count": 0})
+    item["seconds"] = round(float(item.get("seconds", 0.0)) + float(elapsed), 6)
+    item["count"] = int(item.get("count", 0)) + 1
+
+
 def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
     return {
         "output_dir": str(output_dir),
@@ -185,6 +193,7 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "actions": {},
         "scenes": {},
         "failures": [],
+        "timings": {},
         "command_argv": CUSTOM_ARGV,
     }
 
@@ -269,15 +278,21 @@ def main() -> None:
     image_root.mkdir(parents=True, exist_ok=True)
     start_time = time.time()
 
+    stage_start = time.time()
     env = AirVLNENV(batch_size=args.batchSize, dataset_path=args.dataset_path, save_path=args.eval_save_path)
+    _add_timing(stats, "init_env", time.time() - stage_start)
+    stage_start = time.time()
     oracle = AStarOracle(batch_size=args.batchSize, args=args)
+    _add_timing(stats, "init_oracle", time.time() - stage_start)
 
     try:
         with jsonl_path.open("a" if not custom_args.overwrite else "w", encoding="utf-8") as handle:
             while stats["num_rows"] < custom_args.max_samples:
                 if custom_args.max_episodes and stats["num_episodes_started"] >= custom_args.max_episodes:
                     break
+                stage_start = time.time()
                 env_batch = env.next_minibatch(skip_scenes=[])
+                _add_timing(stats, "next_minibatch", time.time() - stage_start)
                 if env_batch is None:
                     break
                 
@@ -295,9 +310,13 @@ def main() -> None:
 
                 stats["num_batches"] += 1
                 stats["num_episodes_started"] += len(env_batch)
+                stage_start = time.time()
                 outputs = env.reset()
+                _add_timing(stats, "env_reset", time.time() - stage_start)
                 observations, env_dones, collisions, _oracle_success = [list(x) for x in zip(*outputs)]
+                stage_start = time.time()
                 oracle.prepare_batch(env=env, batch=env_batch)
+                _add_timing(stats, "oracle_prepare_batch", time.time() - stage_start)
                 plan_summaries = list(oracle.plan_summaries)
                 active = []
                 for batch_index, summary in enumerate(plan_summaries):
@@ -340,7 +359,9 @@ def main() -> None:
                         episode_id = str(task.get("episode_id", task.get("task_id", batch_index)))
                         sample_id = f"{scene}_{episode_id}_{int(observations[batch_index][-1].get('step', _step)):06d}_{stats['num_rows']:08d}"
                         rel_image_path = Path("images") / scene / episode_id / f"{sample_id}.jpg"
+                        stage_start = time.time()
                         _save_image(observations[batch_index][-1], output_dir / rel_image_path, custom_args.image_quality)
+                        _add_timing(stats, "save_image", time.time() - stage_start)
                         record = _record_sample(
                             sample_id=sample_id,
                             rel_image_path=rel_image_path,
@@ -381,8 +402,12 @@ def main() -> None:
                     if stats["num_rows"] >= custom_args.max_samples or not any(active):
                         break
 
+                    stage_start = time.time()
                     env.makeActions(actions, step_sizes, is_fixed=False)
+                    _add_timing(stats, "env_make_actions", time.time() - stage_start)
+                    stage_start = time.time()
                     outputs = env.get_obs()
+                    _add_timing(stats, "env_get_obs", time.time() - stage_start)
                     observations, env_dones, collisions, _oracle_success = [list(x) for x in zip(*outputs)]
                     for batch_index, (env_done, collision) in enumerate(zip(env_dones, collisions)):
                         if env_done or collision:

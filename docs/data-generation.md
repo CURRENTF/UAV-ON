@@ -164,6 +164,43 @@ Observed single-GPU tests:
 - `batchSize=2` can launch after per-port Unreal runtime isolation, but throughput was worse in CityPark and CPU/RPC contention increased.
 - The GPU was not saturated, but increasing batch size caused Unreal/AirSim contention instead of improving throughput.
 
+Additional speed benchmarks on 2026-05-10 on a separate AutoDL RTX 4080 SUPER
+instance showed that the best tested setting there was `batchSize=4` with
+RGB-only observation capture and in-process observation formatting:
+
+| Run | Rows | Total seconds | Total rows/s | Non-reset rows/s | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `baseline_bs1_20_stock` | 20 | 136.2 | 0.147 | 0.470 | stock RGB+depth, JPEG optimize, vector worker |
+| `opt_bs1_20_inline_rgbfast` | 20 | 121.5 | 0.165 | 0.702 | RGB-only, no JPEG optimize, inline vector, no pose/image settle |
+| `opt_bs2_40_inline_rgbfast` | 40 | 136.4 | 0.293 | 1.007 | two CityPark instances on one GPU |
+| `opt_bs4_80_inline_rgbfast` | 80 | 169.9 | 0.471 | 1.216 | four CityPark instances on one GPU |
+| `opt_bs4_80_parallel_rgbfast` | 80 | 195.0 | 0.410 | 0.882 | experimental parallel A* was slower |
+
+In these runs, scene startup dominated small benchmarks (`env_reset` was about
+90-102 seconds). The steady-state improvement comes mostly from:
+
+- `UAV_ON_RGB_ONLY=1`, because Qwen3-VL action data only saves RGB four-view images.
+- `UAV_ON_INLINE_VECTOR_ENV=1`, because the generation path only needs to format `SimState` and does not need separate vector worker processes.
+- `UAV_ON_JPEG_OPTIMIZE=0`, which reduces CPU time spent saving JPEGs.
+- `UAV_ON_IMAGE_SETTLE_SECONDS=0` and `UAV_ON_SET_POSE_SETTLE_SECONDS=0` when using `UAV_ON_KINEMATIC_ACTIONS=1`.
+
+Recommended 4080 SUPER generation overrides:
+
+```bash
+export UAV_ON_BATCH_SIZE=4
+export UAV_ON_KINEMATIC_ACTIONS=1
+export UAV_ON_INLINE_VECTOR_ENV=1
+export UAV_ON_RGB_ONLY=1
+export UAV_ON_JPEG_OPTIMIZE=0
+export UAV_ON_IMAGE_SETTLE_SECONDS=0
+export UAV_ON_SET_POSE_SETTLE_SECONDS=0
+export UAV_ON_SCENE_BOOT_SECONDS=75
+```
+
+Do not parallelize A* voxel planning across the batch on this machine. Testing
+four concurrent `simCreateVoxelGrid` calls increased `oracle_prepare_batch`
+from 32.7 seconds to 56.6 seconds for 4 episodes.
+
 ## Troubleshooting
 
 Symptom: generator is alive but `train.jsonl` and images stop advancing.
