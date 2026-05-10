@@ -2,6 +2,10 @@
 
 Observed on 2026-05-09 in AutoDL under `/root/autodl-tmp/UAV-ON`.
 
+The absolute paths in this document are machine-local paths for the current
+AutoDL instance. They document where data is stored on this server only; do not
+treat them as portable repo defaults.
+
 ## Purpose
 
 Generate offline Qwen3-VL action-supervision samples from downloaded UAV-ON train scenes and trainset metadata:
@@ -21,6 +25,57 @@ The current production run targets 2,000 samples per train scene, for at least 2
 - Main generation log: `/root/autodl-fs/logs/uavon_qwen3vl_generate_20k_resume.log`
 - Detached wrapper log: `/root/autodl-fs/logs/uavon_qwen3vl_generate_detached_wrapper.log`
 - Detached server log: `/root/autodl-fs/logs/uavon_train_server_detached.log`
+
+## Local AutoDL Dataset Inventory
+
+Observed under `/root/autodl-fs/datasets` on this AutoDL machine:
+
+- Official UAV-ON metadata repo: `/root/autodl-fs/datasets/UAV-ON-dataset`
+- Official train metadata JSONs: `/root/autodl-fs/datasets/UAV-ON-dataset/UAV-ON-data/trainset`
+- Official validation metadata JSONs: `/root/autodl-fs/datasets/UAV-ON-dataset/UAV-ON-data/valset`
+- Downloaded train environment zips: `/root/autodl-fs/datasets/UAV-ON-envs-train`
+- Downloaded test environment zips: `/root/autodl-fs/datasets/UAV-ON-envs-test`
+- Unpacked train environments used by `scripts/start_server_train.sh`: `/root/autodl-fs/datasets/UAV-ON-train-unpacked/TRAIN_ENVS`
+- Partially unpacked test environments currently present: `/root/autodl-fs/datasets/UAV-ON-test-unpacked`
+- Balanced train-generation metadata: `/root/autodl-fs/datasets/uavon_train_generation_balanced.json`
+- Per-scene train-generation shards: `/root/autodl-fs/datasets/uavon_train_generation_scene_shards`
+- Generated Qwen3-VL A* action shards: `/root/autodl-fs/datasets/uavon_qwen3vl_action_train_astar_scene_shards`
+
+Approximate sizes observed on this machine:
+
+- `/root/autodl-fs/datasets/UAV-ON-dataset`: 11 MB
+- `/root/autodl-fs/datasets/UAV-ON-envs-train`: 25 GB
+- `/root/autodl-fs/datasets/UAV-ON-envs-test`: 42 GB
+- `/root/autodl-fs/datasets/UAV-ON-train-unpacked`: 27 GB
+- `/root/autodl-fs/datasets/UAV-ON-test-unpacked`: 5.4 GB
+- `/root/autodl-fs/datasets/uavon_qwen3vl_action_train_astar_scene_shards`: 2.2 GB
+
+The unpacked train environments currently include:
+
+- `BrushifyUrban`
+- `CabinLake`
+- `CityPark`
+- `DownTown`
+- `Neighborhood`
+- `Slum`
+- `UrbanJapan`
+- `Venice`
+- `WesternTown`
+- `WinterTown`
+
+### PCD/YAML Resources
+
+The trajectory code in `../temp/traj_gen` expects additional local resources
+such as `configs/{env}.yaml` and `scene_data/pcd_map/{env}.ply`. Those resources
+were not found in the UAV-ON repo or under the UAV-ON dataset directories on
+this AutoDL machine as of 2026-05-09.
+
+The only `.ply` files found under `/root/autodl-fs/datasets` were in
+`/root/autodl-fs/datasets/scene_datasets/mp3d`, which is unrelated to UAV-ON.
+So the currently available UAV-ON dataset resources are enough for the existing
+online AirSim voxel A* pipeline, but not enough by themselves to run the
+`../temp` point-cloud/YAML A* pipeline without generating or obtaining those
+extra PCD/YAML assets.
 
 Each scene output contains:
 
@@ -125,4 +180,3 @@ Symptom: closing Codex stops generation.
 Symptom: server restart says address already in use.
 
 - An old `AirVLNSimulatorServerTool.py` is still listening on `30000`; stop it before starting a new detached server.
-
