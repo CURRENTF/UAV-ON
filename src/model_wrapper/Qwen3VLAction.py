@@ -131,7 +131,7 @@ class Qwen3VLAction(BaseModelWrapper):
                             "Current four-view observation is provided as one 2x2 image grid "
                             "(front, left, right, down).\n"
                             f"Task instruction:\n{instruction.strip()}\n"
-                            "Choose the last A* action for the current state. "
+                            "Choose the A* action for the current state. "
                             "Allowed actions: forward, left, right, rotl, rotr, ascend, descend, stop.\n"
                             "Return only the action name."
                         ),
