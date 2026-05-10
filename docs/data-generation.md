@@ -188,6 +188,12 @@ is the fastest tested mode, but it is more aggressive. For production data,
 keep the default 0.2-second settle values unless a visual sanity check confirms
 that the rendered frame has updated correctly after each kinematic pose change.
 
+A follow-up CityPark alignment test compared RGB images captured after 0.02
+seconds against the same poses after 0.2 seconds for 20 A* steps and four
+cameras per step. The 0.02-second images did not align with the 0.2-second
+reference (`mean_abs_avg=64.1`, `mean_abs_p95=112.4`, `psnr_avg=10.37dB`), so
+0.02 seconds is not recommended for production data on this machine.
+
 Recommended conservative 4080 SUPER generation overrides:
 
 ```bash
@@ -201,7 +207,9 @@ bash scripts/generate_qwen3vl_action_dataset.sh \
   --inline_vector_env true
 ```
 
-For a faster benchmark run after visual validation, add:
+For a faster benchmark run after visual validation, add explicit settle
+overrides. Do not use the values below for production without re-running the
+alignment check on the target machine:
 
 ```bash
   --image_settle_seconds 0 \
