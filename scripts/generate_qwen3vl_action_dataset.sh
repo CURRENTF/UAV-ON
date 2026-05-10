@@ -11,6 +11,12 @@ save_path="${UAV_ON_GENERATE_SAVE_PATH:-$output_dir/run_logs}"
 cuda_visible_devices="${UAV_ON_CUDA_VISIBLE_DEVICES:-0}"
 gpu_id="${UAV_ON_GPU_ID:-0}"
 sim_port="${UAV_ON_SIM_PORT:-30000}"
+extra_args=()
+[[ -n "${UAV_ON_RGB_ONLY+x}" ]] && extra_args+=(--rgb_only "$UAV_ON_RGB_ONLY")
+[[ -n "${UAV_ON_JPEG_OPTIMIZE+x}" ]] && extra_args+=(--jpeg_optimize "$UAV_ON_JPEG_OPTIMIZE")
+[[ -n "${UAV_ON_INLINE_VECTOR_ENV+x}" ]] && extra_args+=(--inline_vector_env "$UAV_ON_INLINE_VECTOR_ENV")
+[[ -n "${UAV_ON_IMAGE_SETTLE_SECONDS+x}" ]] && extra_args+=(--image_settle_seconds "$UAV_ON_IMAGE_SETTLE_SECONDS")
+[[ -n "${UAV_ON_SET_POSE_SETTLE_SECONDS+x}" ]] && extra_args+=(--set_pose_settle_seconds "$UAV_ON_SET_POSE_SETTLE_SECONDS")
 
 CUDA_VISIBLE_DEVICES="$cuda_visible_devices" "$python_bin" -u "$root_dir/scripts/generate_qwen3vl_action_dataset_online.py" \
     --output_dir "$output_dir" \
@@ -18,6 +24,7 @@ CUDA_VISIBLE_DEVICES="$cuda_visible_devices" "$python_bin" -u "$root_dir/scripts
     --max_episodes "${UAV_ON_GENERATE_MAX_EPISODES:-0}" \
     --flush_every "${UAV_ON_GENERATE_FLUSH_EVERY:-100}" \
     --status_every "${UAV_ON_GENERATE_STATUS_EVERY:-100}" \
+    "${extra_args[@]}" \
     ${UAV_ON_GENERATE_OVERWRITE:+--overwrite} \
     --name AStarQwen3VLData \
     --maxActions "${UAV_ON_ASTAR_MAX_ACTIONS:-150}" \
@@ -36,4 +43,5 @@ CUDA_VISIBLE_DEVICES="$cuda_visible_devices" "$python_bin" -u "$root_dir/scripts
     --astar_target_search_radius "${UAV_ON_ASTAR_TARGET_SEARCH_RADIUS:-20.0}" \
     --astar_max_goal_candidates "${UAV_ON_ASTAR_MAX_GOAL_CANDIDATES:-128}" \
     --astar_max_move_voxels "${UAV_ON_ASTAR_MAX_MOVE_VOXELS:-1}" \
-    --astar_keep_voxels "${UAV_ON_ASTAR_KEEP_VOXELS:-false}"
+    --astar_keep_voxels "${UAV_ON_ASTAR_KEEP_VOXELS:-false}" \
+    "$@"

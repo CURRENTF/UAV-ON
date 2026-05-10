@@ -16,6 +16,24 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 
+def _str2bool(value):
+    if isinstance(value, bool):
+        return value
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Expected boolean value, got {value!r}")
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return _str2bool(value)
+
+
 CUSTOM_ARGV = sys.argv[:]
 custom_parser = argparse.ArgumentParser(add_help=False)
 custom_parser.add_argument("--output_dir", required=True)
@@ -23,10 +41,21 @@ custom_parser.add_argument("--max_samples", type=int, default=20000)
 custom_parser.add_argument("--max_episodes", type=int, default=0)
 custom_parser.add_argument("--flush_every", type=int, default=100)
 custom_parser.add_argument("--image_quality", type=int, default=90)
+custom_parser.add_argument("--rgb_only", type=_str2bool, default=_env_bool("UAV_ON_RGB_ONLY", False))
+custom_parser.add_argument("--jpeg_optimize", type=_str2bool, default=_env_bool("UAV_ON_JPEG_OPTIMIZE", True))
+custom_parser.add_argument("--inline_vector_env", type=_str2bool, default=_env_bool("UAV_ON_INLINE_VECTOR_ENV", False))
+custom_parser.add_argument("--image_settle_seconds", type=float, default=float(os.environ.get("UAV_ON_IMAGE_SETTLE_SECONDS", "0.2")))
+custom_parser.add_argument("--set_pose_settle_seconds", type=float, default=float(os.environ.get("UAV_ON_SET_POSE_SETTLE_SECONDS", "0.2")))
 custom_parser.add_argument("--overwrite", action="store_true")
 custom_parser.add_argument("--status_every", type=int, default=100)
 custom_args, remaining_argv = custom_parser.parse_known_args()
 sys.argv = [sys.argv[0]] + remaining_argv
+
+os.environ["UAV_ON_RGB_ONLY"] = "1" if custom_args.rgb_only else "0"
+os.environ["UAV_ON_JPEG_OPTIMIZE"] = "1" if custom_args.jpeg_optimize else "0"
+os.environ["UAV_ON_INLINE_VECTOR_ENV"] = "1" if custom_args.inline_vector_env else "0"
+os.environ["UAV_ON_IMAGE_SETTLE_SECONDS"] = str(custom_args.image_settle_seconds)
+os.environ["UAV_ON_SET_POSE_SETTLE_SECONDS"] = str(custom_args.set_pose_settle_seconds)
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -170,6 +199,13 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "max_actions": args.maxActions,
         "simulator_tool_port": args.simulator_tool_port,
         "gpu_id": args.gpu_id,
+        "performance": {
+            "rgb_only": custom_args.rgb_only,
+            "jpeg_optimize": custom_args.jpeg_optimize,
+            "inline_vector_env": custom_args.inline_vector_env,
+            "image_settle_seconds": custom_args.image_settle_seconds,
+            "set_pose_settle_seconds": custom_args.set_pose_settle_seconds,
+        },
         "astar": {
             "voxel_resolution": args.astar_voxel_resolution,
             "voxel_margin_xy": args.astar_voxel_margin_xy,

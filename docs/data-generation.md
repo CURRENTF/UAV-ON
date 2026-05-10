@@ -182,20 +182,36 @@ In these runs, scene startup dominated small benchmarks (`env_reset` was about
 - `UAV_ON_RGB_ONLY=1`, because Qwen3-VL action data only saves RGB four-view images.
 - `UAV_ON_INLINE_VECTOR_ENV=1`, because the generation path only needs to format `SimState` and does not need separate vector worker processes.
 - `UAV_ON_JPEG_OPTIMIZE=0`, which reduces CPU time spent saving JPEGs.
-- `UAV_ON_IMAGE_SETTLE_SECONDS=0` and `UAV_ON_SET_POSE_SETTLE_SECONDS=0` when using `UAV_ON_KINEMATIC_ACTIONS=1`.
 
-Recommended 4080 SUPER generation overrides:
+The `image_settle_seconds=0` and `set_pose_settle_seconds=0` benchmark setting
+is the fastest tested mode, but it is more aggressive. For production data,
+keep the default 0.2-second settle values unless a visual sanity check confirms
+that the rendered frame has updated correctly after each kinematic pose change.
+
+Recommended conservative 4080 SUPER generation overrides:
 
 ```bash
 export UAV_ON_BATCH_SIZE=4
 export UAV_ON_KINEMATIC_ACTIONS=1
-export UAV_ON_INLINE_VECTOR_ENV=1
-export UAV_ON_RGB_ONLY=1
-export UAV_ON_JPEG_OPTIMIZE=0
-export UAV_ON_IMAGE_SETTLE_SECONDS=0
-export UAV_ON_SET_POSE_SETTLE_SECONDS=0
 export UAV_ON_SCENE_BOOT_SECONDS=75
+
+bash scripts/generate_qwen3vl_action_dataset.sh \
+  --rgb_only true \
+  --jpeg_optimize false \
+  --inline_vector_env true
 ```
+
+For a faster benchmark run after visual validation, add:
+
+```bash
+  --image_settle_seconds 0 \
+  --set_pose_settle_seconds 0
+```
+
+The shell wrapper also accepts the older `UAV_ON_RGB_ONLY`,
+`UAV_ON_JPEG_OPTIMIZE`, `UAV_ON_INLINE_VECTOR_ENV`,
+`UAV_ON_IMAGE_SETTLE_SECONDS`, and `UAV_ON_SET_POSE_SETTLE_SECONDS`
+environment variables and forwards them to the Python argparse interface.
 
 Do not parallelize A* voxel planning across the batch on this machine. Testing
 four concurrent `simCreateVoxelGrid` calls increased `oracle_prepare_batch`
