@@ -225,6 +225,98 @@ Do not parallelize A* voxel planning across the batch on this machine. Testing
 four concurrent `simCreateVoxelGrid` calls increased `oracle_prepare_batch`
 from 32.7 seconds to 56.6 seconds for 4 episodes.
 
+## Local 4080 Simulator-Side Performance
+
+Observed on 2026-05-11 in the local worktree
+`/root/autodl-tmp/UAV-ON-sim-perf` on an RTX 4080.
+
+For data-collection iteration, the useful metric is steady-state collection
+throughput, excluding the first UE scene launch/reset:
+
+```
+steady_rows_per_second = num_rows / (elapsed_seconds - timings.env_reset.seconds)
+```
+
+The current best conservative local setting keeps the existing 0.2 second pose
+and image settle delays, uses kinematic A* execution, and changes only the
+collection-side transport/planning overhead:
+
+```bash
+cd /root/autodl-tmp/UAV-ON-sim-perf
+export UAV_ON_BATCH_SIZE=4
+export UAV_ON_KINEMATIC_ACTIONS=1
+export UAV_ON_RGB_ONLY=1
+export UAV_ON_RGB_COMPRESS=0
+export UAV_ON_JPEG_OPTIMIZE=0
+export UAV_ON_INLINE_VECTOR_ENV=1
+
+bash scripts/generate_qwen3vl_action_dataset.sh
+```
+
+What each option does:
+
+- `UAV_ON_RGB_ONLY=1`: skip depth capture for Qwen3-VL action data, which only
+  saves RGB.
+- `UAV_ON_RGB_COMPRESS=0`: request raw RGB buffers from AirSim instead of
+  compressed image bytes, avoiding simulator-side image compression overhead.
+- `UAV_ON_JPEG_OPTIMIZE=0`: avoid extra CPU work while saving JPEGs.
+- `UAV_ON_INLINE_VECTOR_ENV=1`: format observations in-process instead of
+  sending state through vector worker processes.
+- `UAV_ON_KINEMATIC_ACTIONS=1`: use `simSetVehiclePose` for A* data collection
+  so the saved samples follow the expert path deterministically.
+- A* path cache is enabled by default with `UAV_ON_ASTAR_PLAN_CACHE=1`; it
+  reuses the grid path for repeated start/target/voxel configurations and
+  recomputes only the yaw-dependent action compression.
+
+Local benchmark outputs were stored under:
+
+`/root/autodl-fs/bench_logs/uavon_sim_perf_local`
+
+| Run | Rows | Total seconds | Reset seconds | Steady rows/s | Speedup vs baseline | Notes |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `baseline_bs1_64_kinematic` | 64 | 223.813 | 92.177 | 0.486 | 1.00x | stock RGB+depth, compressed RGB, vector worker, JPEG optimize, kinematic |
+| `golden_bs4_64_compressed_nocache` | 64 | 161.830 | 102.272 | 1.075 | 2.21x | same batch as optimized run, compressed RGB, cache disabled |
+| `opt_bs4_256_rawrgb_cache_run1` | 256 | 202.860 | 101.932 | 2.536 | 5.22x | raw RGB, RGB-only, inline vector, A* cache |
+| `opt_bs4_256_rawrgb_cache_run2` | 256 | 181.743 | 101.703 | 3.198 | 6.58x | repeat run of the same optimized config |
+
+The main remaining simulator-side cost after these changes is image capture and
+JPEG save. In `opt_bs4_256_rawrgb_cache_run2`, the non-reset timing split was:
+
+- `env_get_obs`: 36.459 seconds across 63 capture steps, 0.579 seconds/step.
+- `save_image`: 21.800 seconds across 256 images, 0.085 seconds/image.
+- `env_make_actions`: 13.181 seconds across 63 steps, 0.209 seconds/step.
+- `oracle_prepare_batch`: 6.365 seconds, with 3 A* cache hits and 1 miss.
+
+Correctness checks:
+
+```bash
+cd /root/autodl-tmp/UAV-ON-sim-perf
+
+python scripts/compare_qwen3vl_generation_outputs.py \
+  --baseline /root/autodl-fs/bench_logs/uavon_sim_perf_local/golden_bs4_64_compressed_nocache \
+  --candidate /root/autodl-fs/bench_logs/uavon_sim_perf_local/opt_bs4_256_rawrgb_cache_run2 \
+  --limit 64 \
+  --check-images \
+  --max-image-checks 16 \
+  --output /root/autodl-fs/bench_logs/uavon_sim_perf_local/correctness_golden64_vs_rawrgb_cache_run2.json
+
+python scripts/compare_qwen3vl_generation_outputs.py \
+  --baseline /root/autodl-fs/bench_logs/uavon_sim_perf_local/opt_bs4_256_rawrgb_cache_run1 \
+  --candidate /root/autodl-fs/bench_logs/uavon_sim_perf_local/opt_bs4_256_rawrgb_cache_run2 \
+  --output /root/autodl-fs/bench_logs/uavon_sim_perf_local/correctness_rawrgb_cache_run1_vs_run2.json
+```
+
+The JSONL key fields matched exactly for both checks: `action`, `step_size`,
+`frame_index`, `map_name`, `episode_id`, `distance_to_target`, and
+`plan_summary`. The raw-RGB images were not byte-identical to AirSim compressed
+RGB images; the comparison report records per-image SHA-256 hashes and pixel
+differences. Treat raw RGB as label/trajectory-correct and much faster, but not
+pixel-identical to the compressed AirSim image transport.
+
+On this local 4080, `batchSize=8` with raw RGB saturated the GPU and stalled in
+initial multi-instance capture. Keep the local production recommendation at
+`batchSize=4` unless a later run proves a higher batch size is stable.
+
 ## Troubleshooting
 
 Symptom: generator is alive but `train.jsonl` and images stop advancing.

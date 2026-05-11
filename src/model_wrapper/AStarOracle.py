@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import heapq
+import hashlib
+import json
 import math
 import os
 import tempfile
@@ -306,6 +308,9 @@ class AStarOracle(BaseModelWrapper):
         self.args = args
         self.queues: list[deque[tuple[str, float]]] = [deque() for _ in range(batch_size)]
         self.plan_summaries: list[str] = ["" for _ in range(batch_size)]
+        self._path_cache: dict[str, dict[str, Any]] = {}
+        self.cache_hits = 0
+        self.cache_misses = 0
 
         configured_voxel_dir = getattr(args, "astar_voxel_dir", None)
         voxel_dir = configured_voxel_dir or os.path.join(args.eval_save_path, "astar_voxels")
@@ -360,6 +365,32 @@ class AStarOracle(BaseModelWrapper):
             client.simSetVehiclePose(pose, ignore_collision=True, vehicle_name=vehicle_name)
         except TypeError:
             client.simSetVehiclePose(pose=pose, ignore_collision=True)
+
+    def _cache_key(
+        self,
+        *,
+        item: dict[str, Any],
+        center: np.ndarray,
+        extent: np.ndarray,
+        resolution: float,
+        cell_counts: np.ndarray,
+        start: np.ndarray,
+        targets: np.ndarray,
+    ) -> str:
+        payload = {
+            "map_name": str(item.get("map_name", "unknown")),
+            "start": np.asarray(start, dtype=np.float32).round(4).tolist(),
+            "targets": np.asarray(targets, dtype=np.float32).round(4).tolist(),
+            "center": np.asarray(center, dtype=np.float32).round(4).tolist(),
+            "extent": np.asarray(extent, dtype=np.float32).round(4).tolist(),
+            "cell_counts": np.asarray(cell_counts, dtype=np.int64).tolist(),
+            "resolution": round(float(resolution), 6),
+            "target_search_radius": round(float(getattr(self.args, "astar_target_search_radius", 20.0)), 6),
+            "max_goal_candidates": int(getattr(self.args, "astar_max_goal_candidates", 128)),
+            "max_voxels": int(getattr(self.args, "astar_max_voxels", 4000000)),
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha1(encoded).hexdigest()
 
     def _drain_collision(self, client: Any, vehicle_name: str) -> None:
         for _ in range(2):
@@ -464,10 +495,49 @@ class AStarOracle(BaseModelWrapper):
 
         episode_id = str(item.get("task_id", item.get("episode_id", batch_index)))
         map_name = str(item.get("map_name", "unknown"))
+        use_cache = os.environ.get("UAV_ON_ASTAR_PLAN_CACHE", "1").lower() in {"1", "true", "yes"}
+        cache_key = self._cache_key(
+            item=item,
+            center=center,
+            extent=extent,
+            resolution=resolution,
+            cell_counts=cell_counts,
+            start=start,
+            targets=targets,
+        )
         _debug(
             f"plan start batch={batch_index} map={map_name} episode={episode_id} "
             f"center={center.tolist()} extent={extent.tolist()} resolution={resolution} cells={cell_counts.tolist()}"
         )
+
+        if use_cache and cache_key in self._path_cache:
+            cached = self._path_cache[cache_key]
+            self.cache_hits += 1
+            path = cached["path"]
+            shape = cached["shape"]
+            start_index = cached["start_index"]
+            goal_index = cached["goal_index"]
+            actions, step_sizes = _compress_path_to_actions(
+                path,
+                resolution=resolution,
+                start_quaternion=item["start_pose"]["start_quaternionr"],
+                max_move_voxels=int(getattr(self.args, "astar_max_move_voxels", 1)),
+            )
+            preview = [
+                _grid_index_to_world_position(index, center=center, resolution=resolution, shape=shape)
+                for index in path[:6]
+            ]
+            summary = (
+                f"3D A* oracle, map={map_name}, episode={episode_id}, path_len={len(path)}, "
+                f"actions={len(actions)}, start_index={start_index}, goal_index={goal_index}"
+            )
+            _debug(
+                f"plan cache hit {summary} preview={preview} actions_preview={actions[:10]} "
+                f"cache_hits={self.cache_hits} cache_misses={self.cache_misses}"
+            )
+            return actions, step_sizes, summary
+
+        self.cache_misses += 1
 
         voxel_path, should_delete = self._voxel_output_path(item, batch_index)
         try:
@@ -527,6 +597,14 @@ class AStarOracle(BaseModelWrapper):
                     f"start={start_index} candidates={len(candidates)}"
                 )
 
+            if use_cache:
+                self._path_cache[cache_key] = {
+                    "path": list(path),
+                    "shape": tuple(int(value) for value in shape),
+                    "start_index": tuple(int(value) for value in start_index),
+                    "goal_index": tuple(int(value) for value in goal_index),
+                }
+
             actions, step_sizes = _compress_path_to_actions(
                 path,
                 resolution=resolution,
@@ -541,7 +619,10 @@ class AStarOracle(BaseModelWrapper):
                 f"3D A* oracle, map={map_name}, episode={episode_id}, path_len={len(path)}, "
                 f"actions={len(actions)}, start_index={start_index}, goal_index={goal_index}"
             )
-            _debug(f"plan done {summary} preview={preview} actions_preview={actions[:10]}")
+            _debug(
+                f"plan done {summary} preview={preview} actions_preview={actions[:10]} "
+                f"cache_hits={self.cache_hits} cache_misses={self.cache_misses}"
+            )
             return actions, step_sizes, summary
         finally:
             if should_delete:

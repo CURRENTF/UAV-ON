@@ -13,6 +13,7 @@ gpu_id="${UAV_ON_GPU_ID:-0}"
 sim_port="${UAV_ON_SIM_PORT:-30000}"
 extra_args=()
 [[ -n "${UAV_ON_RGB_ONLY+x}" ]] && extra_args+=(--rgb_only "$UAV_ON_RGB_ONLY")
+[[ -n "${UAV_ON_RGB_COMPRESS+x}" ]] && extra_args+=(--rgb_compress "$UAV_ON_RGB_COMPRESS")
 [[ -n "${UAV_ON_JPEG_OPTIMIZE+x}" ]] && extra_args+=(--jpeg_optimize "$UAV_ON_JPEG_OPTIMIZE")
 [[ -n "${UAV_ON_INLINE_VECTOR_ENV+x}" ]] && extra_args+=(--inline_vector_env "$UAV_ON_INLINE_VECTOR_ENV")
 [[ -n "${UAV_ON_IMAGE_SETTLE_SECONDS+x}" ]] && extra_args+=(--image_settle_seconds "$UAV_ON_IMAGE_SETTLE_SECONDS")

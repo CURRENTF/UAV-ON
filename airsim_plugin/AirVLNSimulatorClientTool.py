@@ -437,12 +437,13 @@ class AirVLNSimulatorClientTool:
                 raise Exception('client is None.')
                 return None, None
             rgb_only = os.environ.get("UAV_ON_RGB_ONLY", "").lower() in {"1", "true", "yes"}
+            rgb_compress = os.environ.get("UAV_ON_RGB_COMPRESS", "1").lower() in {"1", "true", "yes"}
             time_sleep_cnt = 0
             while True:
                 try:
                     ImageRequest = []
                     for camera_name in cameras:
-                        ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.Scene, pixels_as_float=False, compress=True))
+                        ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.Scene, pixels_as_float=False, compress=rgb_compress))
                         if not rgb_only:
                             ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.DepthPerspective, pixels_as_float=True, compress=False))
                     image_settle_seconds = float(os.environ.get("UAV_ON_IMAGE_SETTLE_SECONDS", "0.2"))
@@ -459,7 +460,21 @@ class AirVLNSimulatorClientTool:
                             rgb_resp = image_datas[idx]
                         else:
                             rgb_resp = image_datas[2 * idx]
-                        image = rgb_resp.image_data_uint8
+                        if rgb_compress:
+                            image = rgb_resp.image_data_uint8
+                        else:
+                            image_array = np.frombuffer(rgb_resp.image_data_uint8, dtype=np.uint8)
+                            pixel_count = int(rgb_resp.width) * int(rgb_resp.height)
+                            if image_array.size == pixel_count * 4:
+                                image_array = image_array.reshape(int(rgb_resp.height), int(rgb_resp.width), 4)[:, :, :3]
+                            elif image_array.size == pixel_count * 3:
+                                image_array = image_array.reshape(int(rgb_resp.height), int(rgb_resp.width), 3)
+                            else:
+                                raise ValueError(
+                                    f"Unexpected raw RGB buffer size={image_array.size} "
+                                    f"for {rgb_resp.width}x{rgb_resp.height}"
+                                )
+                            image = image_array.copy()
                         if rgb_only:
                             depth_image = None
                         else:

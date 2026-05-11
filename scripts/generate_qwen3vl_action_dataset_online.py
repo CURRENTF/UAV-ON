@@ -42,6 +42,7 @@ custom_parser.add_argument("--max_episodes", type=int, default=0)
 custom_parser.add_argument("--flush_every", type=int, default=100)
 custom_parser.add_argument("--image_quality", type=int, default=90)
 custom_parser.add_argument("--rgb_only", type=_str2bool, default=_env_bool("UAV_ON_RGB_ONLY", False))
+custom_parser.add_argument("--rgb_compress", type=_str2bool, default=_env_bool("UAV_ON_RGB_COMPRESS", True))
 custom_parser.add_argument("--jpeg_optimize", type=_str2bool, default=_env_bool("UAV_ON_JPEG_OPTIMIZE", True))
 custom_parser.add_argument("--inline_vector_env", type=_str2bool, default=_env_bool("UAV_ON_INLINE_VECTOR_ENV", False))
 custom_parser.add_argument("--image_settle_seconds", type=float, default=float(os.environ.get("UAV_ON_IMAGE_SETTLE_SECONDS", "0.2")))
@@ -52,6 +53,7 @@ custom_args, remaining_argv = custom_parser.parse_known_args()
 sys.argv = [sys.argv[0]] + remaining_argv
 
 os.environ["UAV_ON_RGB_ONLY"] = "1" if custom_args.rgb_only else "0"
+os.environ["UAV_ON_RGB_COMPRESS"] = "1" if custom_args.rgb_compress else "0"
 os.environ["UAV_ON_JPEG_OPTIMIZE"] = "1" if custom_args.jpeg_optimize else "0"
 os.environ["UAV_ON_INLINE_VECTOR_ENV"] = "1" if custom_args.inline_vector_env else "0"
 os.environ["UAV_ON_IMAGE_SETTLE_SECONDS"] = str(custom_args.image_settle_seconds)
@@ -201,6 +203,7 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "gpu_id": args.gpu_id,
         "performance": {
             "rgb_only": custom_args.rgb_only,
+            "rgb_compress": custom_args.rgb_compress,
             "jpeg_optimize": custom_args.jpeg_optimize,
             "inline_vector_env": custom_args.inline_vector_env,
             "image_settle_seconds": custom_args.image_settle_seconds,
@@ -353,6 +356,12 @@ def main() -> None:
                 stage_start = time.time()
                 oracle.prepare_batch(env=env, batch=env_batch)
                 _add_timing(stats, "oracle_prepare_batch", time.time() - stage_start)
+                stats["astar_cache"] = {
+                    "hits": int(getattr(oracle, "cache_hits", 0)),
+                    "misses": int(getattr(oracle, "cache_misses", 0)),
+                    "enabled": os.environ.get("UAV_ON_ASTAR_PLAN_CACHE", "1").lower()
+                    in {"1", "true", "yes"},
+                }
                 plan_summaries = list(oracle.plan_summaries)
                 active = []
                 for batch_index, summary in enumerate(plan_summaries):
