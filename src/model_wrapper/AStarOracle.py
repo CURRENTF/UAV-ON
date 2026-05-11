@@ -9,7 +9,7 @@ import tempfile
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, NamedTuple, Optional, Sequence
 
 import airsim
 import numpy as np
@@ -222,6 +222,244 @@ def _astar_grid_path_to_any(
     return None, None
 
 
+class TurnCooldownConfig(NamedTuple):
+    after: int
+    steps: int
+
+    @property
+    def enabled(self) -> bool:
+        return self.after > 0 and self.steps > 0
+
+
+class TurnCooldownStats(NamedTuple):
+    triggers: int = 0
+    suppressed_turn_candidates: int = 0
+    expanded_states: int = 0
+
+
+_HEADING_DELTAS: tuple[tuple[int, int, float], ...] = (
+    (1, 0, 0.0),
+    (0, 1, 90.0),
+    (-1, 0, 180.0),
+    (0, -1, -90.0),
+)
+
+
+def _nearest_cardinal_heading(yaw: float, *, tolerance_degrees: float = 1e-3) -> int:
+    best_index = min(
+        range(len(_HEADING_DELTAS)),
+        key=lambda index: abs(_wrap_degrees(_HEADING_DELTAS[index][2] - yaw)),
+    )
+    if abs(_wrap_degrees(_HEADING_DELTAS[best_index][2] - yaw)) <= tolerance_degrees:
+        return best_index
+    return -1
+
+
+def _turn_action_between_yaws(current_yaw: float, target_yaw: float) -> tuple[str, float]:
+    delta_yaw = _wrap_degrees(target_yaw - current_yaw)
+    if abs(delta_yaw) <= 1e-3:
+        return "forward", 0.0
+    return ("rotr" if delta_yaw > 0 else "rotl"), abs(delta_yaw)
+
+
+def _turn_action_between_headings(current_heading: int, target_heading: int, *, initial_yaw: float) -> tuple[str, float]:
+    target_yaw = _HEADING_DELTAS[target_heading][2]
+    if current_heading < 0:
+        return _turn_action_between_yaws(initial_yaw, target_yaw)
+    return _turn_action_between_yaws(_HEADING_DELTAS[current_heading][2], target_yaw)
+
+
+def _astar_action_plan_to_any(
+    occupied: np.ndarray,
+    start: tuple[int, int, int],
+    goals: Sequence[tuple[int, int, int]],
+    *,
+    resolution: float,
+    start_quaternion: Sequence[float],
+    cooldown: TurnCooldownConfig,
+) -> tuple[
+    Optional[list[tuple[int, int, int]]],
+    Optional[tuple[int, int, int]],
+    list[str],
+    list[float],
+    TurnCooldownStats,
+]:
+    goal_set = {goal for goal in goals if not occupied[goal]}
+    if not goal_set or occupied[start]:
+        return None, None, [], [], TurnCooldownStats()
+
+    initial_yaw = _yaw_degrees_from_quaternion(start_quaternion)
+    initial_heading = _nearest_cardinal_heading(initial_yaw)
+    start_state = (start[0], start[1], start[2], initial_heading, 0, 0)
+    goal_list = list(goal_set)
+    shape = occupied.shape
+
+    def heuristic(index: tuple[int, int, int]) -> float:
+        best = min(
+            (index[0] - goal[0]) ** 2
+            + (index[1] - goal[1]) ** 2
+            + (index[2] - goal[2]) ** 2
+            for goal in goal_list
+        )
+        return math.sqrt(best)
+
+    def move_state(
+        state: tuple[int, int, int, int, int, int],
+        dx: int,
+        dy: int,
+        dz: int,
+        action: str,
+    ) -> Optional[tuple[tuple[int, int, int, int, int, int], str, float, bool]]:
+        x, y, z, heading, cooldown_remaining, turns_since_cooldown = state
+        neighbor = (x + dx, y + dy, z + dz)
+        if (
+            neighbor[0] < 0
+            or neighbor[0] >= shape[0]
+            or neighbor[1] < 0
+            or neighbor[1] >= shape[1]
+            or neighbor[2] < 0
+            or neighbor[2] >= shape[2]
+            or occupied[neighbor]
+        ):
+            return None
+        next_cooldown = max(0, cooldown_remaining - 1)
+        next_state = (
+            neighbor[0],
+            neighbor[1],
+            neighbor[2],
+            heading,
+            next_cooldown,
+            turns_since_cooldown,
+        )
+        return next_state, action, float(resolution), False
+
+    open_set: list[tuple[float, int, tuple[int, int, int, int, int, int]]] = []
+    heapq.heappush(open_set, (heuristic(start), 0, start_state))
+    came_from: dict[
+        tuple[int, int, int, int, int, int],
+        tuple[tuple[int, int, int, int, int, int], str, float, bool],
+    ] = {}
+    g_score: dict[tuple[int, int, int, int, int, int], float] = {start_state: 0.0}
+    closed: set[tuple[int, int, int, int, int, int]] = set()
+    counter = 1
+    suppressed_turn_candidates = 0
+    expanded_states = 0
+
+    while open_set:
+        _priority, _counter, current = heapq.heappop(open_set)
+        if current in closed:
+            continue
+        current_position = (current[0], current[1], current[2])
+        if current_position in goal_set:
+            states = [current]
+            actions: list[str] = []
+            step_sizes: list[float] = []
+            triggers = 0
+            while current in came_from:
+                previous, action, step_size, triggered = came_from[current]
+                actions.append(action)
+                step_sizes.append(step_size)
+                if triggered:
+                    triggers += 1
+                current = previous
+                states.append(current)
+            actions.reverse()
+            step_sizes.reverse()
+            states.reverse()
+
+            path: list[tuple[int, int, int]] = []
+            for state in states:
+                position = (state[0], state[1], state[2])
+                if not path or path[-1] != position:
+                    path.append(position)
+            actions.append("stop")
+            step_sizes.append(0.0)
+            return (
+                path,
+                path[-1],
+                actions,
+                step_sizes,
+                TurnCooldownStats(
+                    triggers=triggers,
+                    suppressed_turn_candidates=suppressed_turn_candidates,
+                    expanded_states=expanded_states,
+                ),
+            )
+
+        closed.add(current)
+        expanded_states += 1
+        current_score = g_score[current]
+        x, y, z, heading, cooldown_remaining, turns_since_cooldown = current
+
+        candidates: list[tuple[tuple[int, int, int, int, int, int], str, float, bool]] = []
+        if heading >= 0:
+            dx, dy, _yaw = _HEADING_DELTAS[heading]
+            forward = move_state(current, dx, dy, 0, "forward")
+            if forward is not None:
+                candidates.append(forward)
+
+        ascend = move_state(current, 0, 0, 1, "ascend")
+        if ascend is not None:
+            candidates.append(ascend)
+        descend = move_state(current, 0, 0, -1, "descend")
+        if descend is not None:
+            candidates.append(descend)
+
+        if cooldown_remaining > 0:
+            suppressed_turn_candidates += 3 if heading >= 0 else 4
+        else:
+            for target_heading in range(len(_HEADING_DELTAS)):
+                if target_heading == heading:
+                    continue
+                action, step_size = _turn_action_between_headings(
+                    heading,
+                    target_heading,
+                    initial_yaw=initial_yaw,
+                )
+                if action not in {"rotl", "rotr"}:
+                    continue
+                next_turns = turns_since_cooldown + 1
+                triggered = next_turns >= cooldown.after
+                next_cooldown = cooldown.steps if triggered else 0
+                next_state = (
+                    x,
+                    y,
+                    z,
+                    target_heading,
+                    next_cooldown,
+                    0 if triggered else next_turns,
+                )
+                candidates.append((next_state, action, step_size, triggered))
+
+        for neighbor_state, action, step_size, triggered in candidates:
+            if neighbor_state in closed:
+                continue
+            tentative = current_score + 1.0
+            if tentative >= g_score.get(neighbor_state, float("inf")):
+                continue
+            came_from[neighbor_state] = (current, action, step_size, triggered)
+            g_score[neighbor_state] = tentative
+            neighbor_position = (neighbor_state[0], neighbor_state[1], neighbor_state[2])
+            # Prefer shorter action plans, then fewer turns when action counts tie.
+            turn_tiebreak = 0.01 if action in {"rotl", "rotr"} else 0.0
+            heapq.heappush(
+                open_set,
+                (tentative + heuristic(neighbor_position) + turn_tiebreak, counter, neighbor_state),
+            )
+            counter += 1
+
+    return (
+        None,
+        None,
+        [],
+        [],
+        TurnCooldownStats(
+            suppressed_turn_candidates=suppressed_turn_candidates,
+            expanded_states=expanded_states,
+        ),
+    )
+
+
 def _compress_path_to_actions(
     path: Sequence[tuple[int, int, int]],
     *,
@@ -312,6 +550,8 @@ class AStarOracle(BaseModelWrapper):
         self._path_cache: dict[str, dict[str, Any]] = {}
         self.cache_hits = 0
         self.cache_misses = 0
+        self.turn_cooldown_config = self._turn_cooldown_config()
+        self.turn_cooldown_stats: list[dict[str, Any]] = []
 
         configured_voxel_dir = getattr(args, "astar_voxel_dir", None)
         voxel_dir = configured_voxel_dir or os.path.join(args.eval_save_path, "astar_voxels")
@@ -322,6 +562,69 @@ class AStarOracle(BaseModelWrapper):
                 os.chmod(self.voxel_dir, 0o777)
             except OSError:
                 pass
+
+    def _turn_cooldown_config(self) -> TurnCooldownConfig:
+        after = int(getattr(self.args, "astar_turn_cooldown_after", 0))
+        steps = int(getattr(self.args, "astar_turn_cooldown_steps", 0))
+        if after < 0:
+            raise ValueError("--astar_turn_cooldown_after must be >= 0")
+        if steps < 0:
+            raise ValueError("--astar_turn_cooldown_steps must be >= 0")
+        return TurnCooldownConfig(after=after, steps=steps)
+
+    def _action_stats(
+        self,
+        actions: Sequence[str],
+        cooldown_stats: TurnCooldownStats = TurnCooldownStats(),
+    ) -> dict[str, Any]:
+        action_count = len(actions)
+        turn_count = sum(1 for action in actions if action in {"rotl", "rotr"})
+        alternating_turns = 0
+        previous_turn: Optional[str] = None
+        for action in actions:
+            if action not in {"rotl", "rotr"}:
+                continue
+            if previous_turn is not None and previous_turn != action:
+                alternating_turns += 1
+            previous_turn = action
+        return {
+            "enabled": self.turn_cooldown_config.enabled,
+            "after": self.turn_cooldown_config.after,
+            "steps": self.turn_cooldown_config.steps,
+            "action_count": action_count,
+            "turn_count": turn_count,
+            "turn_density": round(turn_count / max(1, action_count), 6),
+            "alternating_turn_count": alternating_turns,
+            "cooldown_triggers": cooldown_stats.triggers,
+            "suppressed_turn_candidates": cooldown_stats.suppressed_turn_candidates,
+            "expanded_states": cooldown_stats.expanded_states,
+        }
+
+    def get_turn_cooldown_stats(self) -> dict[str, Any]:
+        totals = {
+            "enabled": self.turn_cooldown_config.enabled,
+            "after": self.turn_cooldown_config.after,
+            "steps": self.turn_cooldown_config.steps,
+            "plans": len(self.turn_cooldown_stats),
+            "action_count": 0,
+            "turn_count": 0,
+            "alternating_turn_count": 0,
+            "cooldown_triggers": 0,
+            "suppressed_turn_candidates": 0,
+            "expanded_states": 0,
+        }
+        for item in self.turn_cooldown_stats:
+            for key in (
+                "action_count",
+                "turn_count",
+                "alternating_turn_count",
+                "cooldown_triggers",
+                "suppressed_turn_candidates",
+                "expanded_states",
+            ):
+                totals[key] += int(item.get(key, 0))
+        totals["turn_density"] = round(totals["turn_count"] / max(1, totals["action_count"]), 6)
+        return totals
 
     def _client_for_batch_index(self, env: Any, batch_index: int) -> Any:
         cursor = 0
@@ -450,7 +753,7 @@ class AStarOracle(BaseModelWrapper):
             raise RuntimeError(f"simCreateVoxelGrid failed: {voxel_path}")
         return _read_binvox_occupancy(voxel_path)
 
-    def _plan_one(self, *, env: Any, batch_index: int, item: dict[str, Any]) -> tuple[list[str], list[float], str]:
+    def _plan_one(self, *, env: Any, batch_index: int, item: dict[str, Any]) -> tuple[list[str], list[float], str, dict[str, Any]]:
         if bool(getattr(self.args, "is_fixed", False)):
             raise RuntimeError("AStarOracle requires --is_fixed false so 1-unit action step sizes are honored.")
 
@@ -496,7 +799,8 @@ class AStarOracle(BaseModelWrapper):
 
         episode_id = str(item.get("task_id", item.get("episode_id", batch_index)))
         map_name = str(item.get("map_name", "unknown"))
-        use_cache = runtime_config_from_env().astar_plan_cache
+        use_turn_cooldown = self.turn_cooldown_config.enabled
+        use_cache = runtime_config_from_env().astar_plan_cache and not use_turn_cooldown
         cache_key = self._cache_key(
             item=item,
             center=center,
@@ -524,19 +828,21 @@ class AStarOracle(BaseModelWrapper):
                 start_quaternion=item["start_pose"]["start_quaternionr"],
                 max_move_voxels=int(getattr(self.args, "astar_max_move_voxels", 1)),
             )
+            action_stats = self._action_stats(actions)
             preview = [
                 _grid_index_to_world_position(index, center=center, resolution=resolution, shape=shape)
                 for index in path[:6]
             ]
             summary = (
                 f"3D A* oracle, map={map_name}, episode={episode_id}, path_len={len(path)}, "
-                f"actions={len(actions)}, start_index={start_index}, goal_index={goal_index}"
+                f"actions={len(actions)}, turns={action_stats['turn_count']}, "
+                f"turn_cooldown=off, start_index={start_index}, goal_index={goal_index}"
             )
             _debug(
                 f"plan cache hit {summary} preview={preview} actions_preview={actions[:10]} "
                 f"cache_hits={self.cache_hits} cache_misses={self.cache_misses}"
             )
-            return actions, step_sizes, summary
+            return actions, step_sizes, summary, action_stats
 
         self.cache_misses += 1
 
@@ -591,12 +897,31 @@ class AStarOracle(BaseModelWrapper):
                     f"A* could not find a free target-adjacent voxel: map={map_name} episode={episode_id}"
                 )
 
-            path, goal_index = _astar_grid_path_to_any(occupied, start_index, candidates)
-            if path is None or goal_index is None:
-                raise RuntimeError(
-                    f"A* could not find a traversable path: map={map_name} episode={episode_id} "
-                    f"start={start_index} candidates={len(candidates)}"
+            cooldown_stats = TurnCooldownStats()
+            if use_turn_cooldown:
+                path, goal_index, actions, step_sizes, cooldown_stats = _astar_action_plan_to_any(
+                    occupied,
+                    start_index,
+                    candidates,
+                    resolution=resolution,
+                    start_quaternion=item["start_pose"]["start_quaternionr"],
+                    cooldown=self.turn_cooldown_config,
                 )
+                if path is None or goal_index is None:
+                    raise RuntimeError(
+                        f"A* turn-cooldown variant could not find a traversable action plan: "
+                        f"map={map_name} episode={episode_id} start={start_index} candidates={len(candidates)} "
+                        f"after={self.turn_cooldown_config.after} steps={self.turn_cooldown_config.steps} "
+                        f"suppressed_turn_candidates={cooldown_stats.suppressed_turn_candidates} "
+                        f"expanded_states={cooldown_stats.expanded_states}"
+                    )
+            else:
+                path, goal_index = _astar_grid_path_to_any(occupied, start_index, candidates)
+                if path is None or goal_index is None:
+                    raise RuntimeError(
+                        f"A* could not find a traversable path: map={map_name} episode={episode_id} "
+                        f"start={start_index} candidates={len(candidates)}"
+                    )
 
             if use_cache:
                 self._path_cache[cache_key] = {
@@ -606,25 +931,29 @@ class AStarOracle(BaseModelWrapper):
                     "goal_index": tuple(int(value) for value in goal_index),
                 }
 
-            actions, step_sizes = _compress_path_to_actions(
-                path,
-                resolution=resolution,
-                start_quaternion=item["start_pose"]["start_quaternionr"],
-                max_move_voxels=int(getattr(self.args, "astar_max_move_voxels", 1)),
-            )
+            if not use_turn_cooldown:
+                actions, step_sizes = _compress_path_to_actions(
+                    path,
+                    resolution=resolution,
+                    start_quaternion=item["start_pose"]["start_quaternionr"],
+                    max_move_voxels=int(getattr(self.args, "astar_max_move_voxels", 1)),
+                )
+            action_stats = self._action_stats(actions, cooldown_stats)
             preview = [
                 _grid_index_to_world_position(index, center=center, resolution=resolution, shape=shape)
                 for index in path[:6]
             ]
             summary = (
                 f"3D A* oracle, map={map_name}, episode={episode_id}, path_len={len(path)}, "
-                f"actions={len(actions)}, start_index={start_index}, goal_index={goal_index}"
+                f"actions={len(actions)}, turns={action_stats['turn_count']}, "
+                f"turn_cooldown={'on' if use_turn_cooldown else 'off'}, "
+                f"start_index={start_index}, goal_index={goal_index}"
             )
             _debug(
                 f"plan done {summary} preview={preview} actions_preview={actions[:10]} "
                 f"cache_hits={self.cache_hits} cache_misses={self.cache_misses}"
             )
-            return actions, step_sizes, summary
+            return actions, step_sizes, summary, action_stats
         finally:
             if should_delete:
                 try:
@@ -638,16 +967,18 @@ class AStarOracle(BaseModelWrapper):
         _debug(f"prepare batch size={len(batch)}")
         for batch_index, item in enumerate(batch):
             try:
-                actions, step_sizes, summary = self._plan_one(env=env, batch_index=batch_index, item=item)
+                actions, step_sizes, summary, action_stats = self._plan_one(env=env, batch_index=batch_index, item=item)
             except Exception as exc:
                 episode_id = str(item.get("task_id", item.get("episode_id", batch_index)))
                 logger.exception("AStarOracle planning failed for episode %s", episode_id)
                 print(f"[AStarOracle] plan failed episode={episode_id}: {exc}", flush=True)
                 actions, step_sizes = ["stop"], [0.0]
                 summary = f"3D A* oracle failed, episode={episode_id}, error={exc}"
+                action_stats = self._action_stats(actions)
 
             self.queues.append(deque(zip(actions, step_sizes)))
             self.plan_summaries.append(summary)
+            self.turn_cooldown_stats.append(action_stats)
         _debug(f"prepared queue_lengths={[len(queue) for queue in self.queues]}")
 
     def prepare_inputs(self, episodes: Sequence[Sequence[dict[str, Any]]], fixed: bool = False):

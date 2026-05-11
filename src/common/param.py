@@ -62,6 +62,8 @@ class Param:
         self.parser.add_argument("--astar_target_search_radius", type=float, default=20.0, help="radius for finding a free voxel adjacent to an annotated target point")
         self.parser.add_argument("--astar_max_goal_candidates", type=int, default=128, help="maximum free target-adjacent voxels tried per episode")
         self.parser.add_argument("--astar_max_move_voxels", type=int, default=1, help="maximum 1-unit grid moves merged into one physical action")
+        self.parser.add_argument("--astar_turn_cooldown_after", type=int, default=0, help="enable turn-cooldown A* after this many turn actions; 0 disables")
+        self.parser.add_argument("--astar_turn_cooldown_steps", type=int, default=0, help="number of following non-turn actions that block additional turns")
         self.parser.add_argument("--astar_keep_voxels", type=str2bool, default=False, help="whether to keep generated binvox files")
         self.parser.add_argument("--astar_voxel_dir", type=str, default=None, help="directory used when --astar_keep_voxels is true")
 

@@ -29,4 +29,6 @@ CUDA_VISIBLE_DEVICES="$cuda_visible_devices" python -u $root_dir/src/eval_astar.
     --astar_target_search_radius "${UAV_ON_ASTAR_TARGET_SEARCH_RADIUS:-20.0}" \
     --astar_max_goal_candidates "${UAV_ON_ASTAR_MAX_GOAL_CANDIDATES:-128}" \
     --astar_max_move_voxels "${UAV_ON_ASTAR_MAX_MOVE_VOXELS:-1}" \
+    --astar_turn_cooldown_after "${UAV_ON_ASTAR_TURN_COOLDOWN_AFTER:-0}" \
+    --astar_turn_cooldown_steps "${UAV_ON_ASTAR_TURN_COOLDOWN_STEPS:-0}" \
     --astar_keep_voxels "${UAV_ON_ASTAR_KEEP_VOXELS:-false}"

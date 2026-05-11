@@ -147,3 +147,85 @@ UAV-ON environment code.
 Runtime behavior variables are centralized in `src/common/runtime_config.py`.
 See `docs/runtime-config.md` for the list of `UAV_ON_*` variables that affect
 data generation and closed-loop evaluation.
+
+## Front-Only Training Handoff
+
+Observed on 2026-05-11: a front-camera-only 20k data run was generated under:
+
+```text
+/root/autodl-fs/datasets/uavon_qwen3vl_action_front_rgb_3m_20k_balanced_fast_approx
+```
+
+This dataset is scene-sharded: each scene subdirectory has its own
+`train.jsonl`, and the root does not contain a training JSONL by default.
+LightningVLN's current Qwen3-VL trainer expects one JSONL, so the scene shards
+must be merged before training. The observed merged path was:
+
+```text
+/root/autodl-fs/datasets/uavon_qwen3vl_action_front_rgb_3m_20k_balanced_fast_approx/train_combined.jsonl
+```
+
+When merging, prefix each row's `image` path and any image entries inside
+`messages` with the scene directory name. The per-scene shard JSONL paths are
+relative to their scene directory, while the combined JSONL is rooted at the
+dataset root.
+
+Observed no-resampling distribution:
+
+- `forward`: 12253
+- `rotr`: 2995
+- `rotl`: 2943
+- `stop`: 914
+- `descend`: 810
+- `ascend`: 85
+
+Observed LightningVLN run settings for the front-only experiment:
+
+- `PEFT_METHOD=dora`
+- `PER_DEVICE_TRAIN_BATCH_SIZE=8`
+- `GRADIENT_ACCUMULATION_STEPS=1`
+- `LEARNING_RATE=1e-4`
+- `LR_SCHEDULER_TYPE=linear`
+- `MAX_STEPS=1000`
+- `SAVE_STEPS=200`
+- `SAVE_TOTAL_LIMIT=5`
+- `DATALOADER_NUM_WORKERS=4`
+- `REPORT_TO=wandb`
+
+Observed output paths:
+
+```text
+/root/autodl-fs/checkpoints/uavon_qwen3vl_action_front_rgb_3m_20k_dora_bs8_lr1e-4_linear_1k_workers4
+/root/autodl-fs/logs/uavon_qwen3vl_action_front_rgb_bs8_lr1e-4_linear_1k_workers4.log
+```
+
+The first attempt used `DATALOADER_NUM_WORKERS=0`; it showed GPU starvation
+and was stopped before checkpoint step 200. With 4 workers, a 180-second sample
+showed average GPU utilization rising from about 81% to about 98%, and
+`gpu_util=0` seconds dropping from 29 to 0.
+
+PyTorch DataLoader workers appear in `top`/`ps` as child `python` processes
+with the same command line as the trainer, not as processes named
+`dataloader`. Verify them with:
+
+```bash
+ps --ppid <train_pid> -o pid,ppid,stat,etime,%cpu,%mem,rss,cmd
+```
+
+## Image Size And Qwen3-VL Token Cost
+
+Observed with the local Qwen3-VL processor:
+
+- Front-only RGB samples are `512x512` and occupy 256 image pad tokens.
+- The stitched four-view grid is `1024x1024` when each AirSim RGB camera is
+  `512x512`, and occupies 1024 image pad tokens.
+
+Front-only training therefore uses about one quarter of the image tokens of the
+stitched four-view training image.
+
+## Interrupted Eval Observation
+
+The 2026-05-11 nonforward80 closed-loop eval was manually stopped before a full
+final report. The partial results seen during the run had no successes among
+completed tasks; completed failures were ending by `step_limit`. Treat that
+run as diagnostic only, not as a final benchmark.

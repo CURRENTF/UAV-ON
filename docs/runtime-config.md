@@ -21,6 +21,8 @@ These variables are read through `UavOnRuntimeConfig`:
 - `UAV_ON_VERBOSE_POSE`: print pose-setting diagnostics.
 - `UAV_ON_SET_POSE_SETTLE_SECONDS`: delay after kinematic pose updates.
 - `UAV_ON_RGB_ONLY`: skip depth requests when only RGB is needed.
+- `UAV_ON_FRONT_VIEW_ONLY`: request only AirSim camera `0` instead of all four
+  UAV-ON cameras.
 - `UAV_ON_RGB_COMPRESS`: request compressed RGB images from AirSim.
 - `UAV_ON_IMAGE_SETTLE_SECONDS`: delay before image capture.
 - `UAV_ON_JPEG_OPTIMIZE`: enable Pillow JPEG optimization in Qwen3-VL data generation.
@@ -51,3 +53,22 @@ bash scripts/run_qwen3vl_dora_nonforward_1k_pipeline.sh
 ```
 
 `scripts/tmp/` remains for local one-off debugging only.
+
+## Behavior Notes
+
+`UAV_ON_RGB_ONLY=1` skips depth image requests. It is appropriate for the
+current Qwen3-VL action datasets and policies because they consume RGB images
+only.
+
+`UAV_ON_FRONT_VIEW_ONLY=1` requests AirSim camera `0` only. It changes the
+simulator image request rather than cropping a four-view observation after the
+fact.
+
+`UAV_ON_KINEMATIC_ACTIONS=1` uses `simSetVehiclePose` to place the UAV at the
+next A* pose. This is fast and deterministic for offline expert data, but it
+bypasses SimpleFlight movement dynamics and continuous path collision checks.
+The implementation sets poses with `ignore_collision=True`, so collisions with
+small or thin objects along the skipped path may not be detected. Images are
+still real Unreal renders at the final pose, but the transition is not a fully
+physical flight rollout. Use physics mode when the benchmark specifically needs
+AirSim movement/collision fidelity.

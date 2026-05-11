@@ -4,6 +4,8 @@ import re
 from typing import Final
 
 UAVON_ACTION_PROMPT_VERSION: Final[str] = "qwen3vl_action_v1"
+UAVON_FRONT_RGB_ACTION_PROMPT_VERSION: Final[str] = "qwen3vl_action_v1_front_rgb"
+UAVON_FOUR_VIEW_IMAGES_ACTION_PROMPT_VERSION: Final[str] = "qwen3vl_action_v1_four_view_images"
 
 UAVON_ACTIONS: Final[tuple[str, ...]] = (
     "forward",
@@ -38,10 +40,23 @@ _ACTION_PATTERN = re.compile(
 )
 
 
-def build_qwen3vl_action_user_prompt(instruction: str) -> str:
+def build_qwen3vl_action_user_prompt(instruction: str, *, view_mode: str = "four_view") -> str:
+    if view_mode == "front_rgb":
+        observation_text = "Current observation is one front camera RGB image."
+    elif view_mode == "four_view_images":
+        observation_text = (
+            "Current observation is provided as four RGB images in this order: "
+            "front, left, right, down."
+        )
+    elif view_mode == "four_view":
+        observation_text = (
+            "Current four-view observation is provided as one 2x2 image grid "
+            "(front, left, right, down)."
+        )
+    else:
+        raise ValueError(f"Unsupported UAV-ON action prompt view_mode: {view_mode}")
     return (
-        "Current four-view observation is provided as one 2x2 image grid "
-        "(front, left, right, down).\n"
+        f"{observation_text}\n"
         f"Task instruction:\n{instruction.strip()}\n"
         f"{QWEN3VL_ACTION_CHOICE_INSTRUCTION} "
         f"Allowed actions: {QWEN3VL_ALLOWED_ACTIONS_TEXT}.\n"

@@ -160,6 +160,8 @@ def main():
     parser.add_argument("--port", type=int, default=30100)
     parser.add_argument("--max-actions", type=int, default=8)
     parser.add_argument("--voxel-resolution", type=float, default=2.0)
+    parser.add_argument("--astar-turn-cooldown-after", type=int, default=0)
+    parser.add_argument("--astar-turn-cooldown-steps", type=int, default=0)
     parser.add_argument(
         "--execution-mode",
         choices=("kinematic", "physics"),
@@ -223,6 +225,8 @@ def main():
         astar_target_search_radius=10.0,
         astar_max_goal_candidates=32,
         astar_max_move_voxels=1,
+        astar_turn_cooldown_after=args.astar_turn_cooldown_after,
+        astar_turn_cooldown_steps=args.astar_turn_cooldown_steps,
     )
     oracle = AStarOracle(batch_size=1, args=oracle_args)
     print("planning with AStarOracle", flush=True)

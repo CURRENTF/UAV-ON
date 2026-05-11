@@ -4,11 +4,20 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 manifest="${UAV_ON_SCENE_SHARD_MANIFEST:-/root/autodl-fs/datasets/uavon_train_generation_scene_shards/manifest.json}"
+shard_source="${UAV_ON_SCENE_SHARD_SOURCE:-/root/autodl-fs/datasets/uavon_train_generation_balanced.json}"
 base_output="${UAV_ON_GENERATE_BASE_OUTPUT:-/root/autodl-fs/datasets/uavon_qwen3vl_action_train_astar_scene_shards}"
 target_per_scene="${UAV_ON_GENERATE_SAMPLES_PER_SCENE:-2000}"
 batch_size="${UAV_ON_BATCH_SIZE:-1}"
 
 mkdir -p "$base_output"
+
+if [[ ! -f "$manifest" ]]; then
+  echo "[all-scenes] missing scene shard manifest, rebuilding from $shard_source -> $(dirname "$manifest")"
+  /root/miniconda3/envs/uavon/bin/python scripts/build_uavon_scene_shards.py \
+    --input "$shard_source" \
+    --output_dir "$(dirname "$manifest")" \
+    --overwrite
+fi
 
 /root/miniconda3/envs/uavon/bin/python - <<PY | while IFS=$'\t' read -r scene dataset_path safe_name; do
 import json, re

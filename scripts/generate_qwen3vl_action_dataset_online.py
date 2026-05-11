@@ -39,11 +39,20 @@ custom_parser.add_argument("--max_episodes", type=int, default=0)
 custom_parser.add_argument("--flush_every", type=int, default=100)
 custom_parser.add_argument("--image_quality", type=int, default=90)
 custom_parser.add_argument("--rgb_only", type=_str2bool, default=DEFAULT_RUNTIME_CONFIG.rgb_only)
+custom_parser.add_argument("--front_view_only", type=_str2bool, default=DEFAULT_RUNTIME_CONFIG.front_view_only)
+custom_parser.add_argument("--separate_view_images", type=_str2bool, default=False)
 custom_parser.add_argument("--rgb_compress", type=_str2bool, default=DEFAULT_RUNTIME_CONFIG.rgb_compress)
 custom_parser.add_argument("--jpeg_optimize", type=_str2bool, default=DEFAULT_RUNTIME_CONFIG.jpeg_optimize)
 custom_parser.add_argument("--inline_vector_env", type=_str2bool, default=DEFAULT_RUNTIME_CONFIG.inline_vector_env)
 custom_parser.add_argument("--image_settle_seconds", type=float, default=DEFAULT_RUNTIME_CONFIG.image_settle_seconds)
 custom_parser.add_argument("--set_pose_settle_seconds", type=float, default=DEFAULT_RUNTIME_CONFIG.set_pose_settle_seconds)
+custom_parser.add_argument("--collection_variant", default="uavon_qwen3vl_action_astar")
+custom_parser.add_argument("--collection_tags", default="")
+custom_parser.add_argument("--collection_note", default="")
+custom_parser.add_argument("--scene_balance_mode", default="dataset_order")
+custom_parser.add_argument("--target_total_samples", type=int, default=0)
+custom_parser.add_argument("--target_samples_per_scene", type=int, default=0)
+custom_parser.add_argument("--complete_trajectories", type=_str2bool, default=False)
 custom_parser.add_argument("--overwrite", action="store_true")
 custom_parser.add_argument("--status_every", type=int, default=100)
 custom_args, remaining_argv = custom_parser.parse_known_args()
@@ -58,6 +67,7 @@ CUSTOM_RUNTIME_CONFIG = UavOnRuntimeConfig(
     verbose_pose=DEFAULT_RUNTIME_CONFIG.verbose_pose,
     set_pose_settle_seconds=custom_args.set_pose_settle_seconds,
     rgb_only=custom_args.rgb_only,
+    front_view_only=custom_args.front_view_only,
     rgb_compress=custom_args.rgb_compress,
     image_settle_seconds=custom_args.image_settle_seconds,
     jpeg_optimize=custom_args.jpeg_optimize,
@@ -65,6 +75,7 @@ CUSTOM_RUNTIME_CONFIG = UavOnRuntimeConfig(
 )
 custom_env = CUSTOM_RUNTIME_CONFIG.to_env()
 os.environ["UAV_ON_RGB_ONLY"] = custom_env["UAV_ON_RGB_ONLY"]
+os.environ["UAV_ON_FRONT_VIEW_ONLY"] = custom_env["UAV_ON_FRONT_VIEW_ONLY"]
 os.environ["UAV_ON_RGB_COMPRESS"] = custom_env["UAV_ON_RGB_COMPRESS"]
 os.environ["UAV_ON_JPEG_OPTIMIZE"] = custom_env["UAV_ON_JPEG_OPTIMIZE"]
 os.environ["UAV_ON_INLINE_VECTOR_ENV"] = custom_env["UAV_ON_INLINE_VECTOR_ENV"]
@@ -75,6 +86,8 @@ from common.param import args  # noqa: E402
 from common.uavon_action_schema import (  # noqa: E402
     QWEN3VL_ACTION_SYSTEM_PROMPT,
     UAVON_ACTION_PROMPT_VERSION,
+    UAVON_FOUR_VIEW_IMAGES_ACTION_PROMPT_VERSION,
+    UAVON_FRONT_RGB_ACTION_PROMPT_VERSION,
     UAVON_VALID_ACTIONS,
     build_qwen3vl_action_user_prompt,
 )
@@ -83,6 +96,21 @@ from model_wrapper.AStarOracle import AStarOracle  # noqa: E402
 
 
 SYSTEM_PROMPT = QWEN3VL_ACTION_SYSTEM_PROMPT
+if CUSTOM_RUNTIME_CONFIG.front_view_only:
+    VIEW_MODE = "front_rgb"
+elif custom_args.separate_view_images:
+    VIEW_MODE = "four_view_images"
+else:
+    VIEW_MODE = "four_view"
+ACTION_PROMPT_VERSION = (
+    UAVON_FRONT_RGB_ACTION_PROMPT_VERSION
+    if CUSTOM_RUNTIME_CONFIG.front_view_only
+    else UAVON_FOUR_VIEW_IMAGES_ACTION_PROMPT_VERSION
+    if custom_args.separate_view_images
+    else UAVON_ACTION_PROMPT_VERSION
+)
+COLLECTION_TAGS = [tag.strip() for tag in custom_args.collection_tags.split(",") if tag.strip()]
+FOUR_VIEW_NAMES = ("front", "left", "right", "down")
 
 
 def _task_instruction(task: dict[str, Any]) -> str:
@@ -98,7 +126,7 @@ def _task_instruction(task: dict[str, Any]) -> str:
 
 
 def _user_prompt(instruction: str) -> str:
-    return build_qwen3vl_action_user_prompt(instruction)
+    return build_qwen3vl_action_user_prompt(instruction, view_mode=VIEW_MODE)
 
 
 def _decode_rgb(image: Any) -> Image.Image:
@@ -139,16 +167,78 @@ def _make_fourview_grid(images: list[Any]) -> Image.Image:
     return grid
 
 
+def _make_observation_image(images: list[Any]) -> Image.Image:
+    if CUSTOM_RUNTIME_CONFIG.front_view_only:
+        if len(images) != 1:
+            raise ValueError(f"Expected one front RGB image, got {len(images)}")
+        return _decode_rgb(images[0])
+    return _make_fourview_grid(images)
+
+
 def _save_image(observation: dict[str, Any], output_path: Path, quality: int) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    grid = _make_fourview_grid(observation["rgb"])
-    grid.save(output_path, format="JPEG", quality=quality, optimize=CUSTOM_RUNTIME_CONFIG.jpeg_optimize)
+    image = _make_observation_image(observation["rgb"])
+    image.save(output_path, format="JPEG", quality=quality, optimize=CUSTOM_RUNTIME_CONFIG.jpeg_optimize)
+
+
+def _save_observation_images(
+    observation: dict[str, Any],
+    output_dir: Path,
+    rel_base_image_path: Path,
+    quality: int,
+) -> tuple[list[Path], list[str]]:
+    if custom_args.separate_view_images:
+        images = observation["rgb"]
+        if len(images) != len(FOUR_VIEW_NAMES):
+            raise ValueError(f"Expected four RGB images, got {len(images)}")
+        rel_paths: list[Path] = []
+        stem = rel_base_image_path.stem
+        for view_name, image_data in zip(FOUR_VIEW_NAMES, images):
+            rel_path = rel_base_image_path.with_name(f"{stem}_{view_name}.jpg")
+            output_path = output_dir / rel_path
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            _decode_rgb(image_data).save(
+                output_path,
+                format="JPEG",
+                quality=quality,
+                optimize=CUSTOM_RUNTIME_CONFIG.jpeg_optimize,
+            )
+            rel_paths.append(rel_path)
+        return rel_paths, list(FOUR_VIEW_NAMES)
+
+    _save_image(observation, output_dir / rel_base_image_path, quality)
+    return [rel_base_image_path], ["front"] if CUSTOM_RUNTIME_CONFIG.front_view_only else ["four_view_grid"]
+
+
+def _movement_unit_meters_approx() -> float:
+    return float(args.astar_voxel_resolution) * max(1, int(args.astar_max_move_voxels))
+
+
+def _collection_config() -> dict[str, Any]:
+    return {
+        "variant": custom_args.collection_variant,
+        "tags": COLLECTION_TAGS,
+        "view_mode": VIEW_MODE,
+        "rgb_only": CUSTOM_RUNTIME_CONFIG.rgb_only,
+        "front_view_only": CUSTOM_RUNTIME_CONFIG.front_view_only,
+        "separate_view_images": bool(custom_args.separate_view_images),
+        "image_count_per_sample": len(FOUR_VIEW_NAMES) if custom_args.separate_view_images else 1,
+        "movement_unit_meters_approx": _movement_unit_meters_approx(),
+        "movement_unit_non_strict": True,
+        "scene_balance_mode": custom_args.scene_balance_mode,
+        "target_total_samples": int(custom_args.target_total_samples or custom_args.max_samples),
+        "target_samples_per_scene": int(custom_args.target_samples_per_scene),
+        "complete_trajectories": bool(custom_args.complete_trajectories),
+        "sample_target_is_minimum": bool(custom_args.complete_trajectories),
+        "note": custom_args.collection_note,
+    }
 
 
 def _record_sample(
     *,
     sample_id: str,
-    rel_image_path: Path,
+    rel_image_paths: list[Path],
+    image_view_names: list[str],
     task: dict[str, Any],
     observation: dict[str, Any],
     action: str,
@@ -157,17 +247,22 @@ def _record_sample(
 ) -> dict[str, Any]:
     instruction = _task_instruction(task)
     prompt = _user_prompt(instruction)
+    rel_image_strings = [path.as_posix() for path in rel_image_paths]
+    image_content = [{"type": "image", "image": path} for path in rel_image_strings]
     return {
         "id": sample_id,
-        "image": rel_image_path.as_posix(),
+        "image": rel_image_strings[0],
+        "image_paths": rel_image_strings,
+        "image_view_names": image_view_names,
+        "images": [
+            {"view": view_name, "image": image_path}
+            for view_name, image_path in zip(image_view_names, rel_image_strings)
+        ],
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": [
-                    {"type": "image", "image": rel_image_path.as_posix()},
-                    {"type": "text", "text": prompt},
-                ],
+                "content": image_content + [{"type": "text", "text": prompt}],
             },
             {"role": "assistant", "content": action},
         ],
@@ -179,6 +274,10 @@ def _record_sample(
         "frame_index": int(observation.get("step", -1)),
         "distance_to_target": observation.get("distance_to_target", observation.get("distance_to_end")),
         "plan_summary": plan_summary,
+        "image_view_mode": VIEW_MODE,
+        "action_prompt_version": ACTION_PROMPT_VERSION,
+        "collection_config": _collection_config(),
+        "is_terminal_action": action == "stop",
     }
 
 
@@ -201,6 +300,8 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "jsonl_path": str(jsonl_path),
         "dataset_path": args.dataset_path,
         "max_samples": custom_args.max_samples,
+        "target_total_samples": int(custom_args.target_total_samples or custom_args.max_samples),
+        "target_samples_per_scene": int(custom_args.target_samples_per_scene),
         "max_episodes": custom_args.max_episodes,
         "batch_size": args.batchSize,
         "max_actions": args.maxActions,
@@ -208,6 +309,8 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "gpu_id": args.gpu_id,
         "performance": {
             "rgb_only": CUSTOM_RUNTIME_CONFIG.rgb_only,
+            "front_view_only": CUSTOM_RUNTIME_CONFIG.front_view_only,
+            "separate_view_images": bool(custom_args.separate_view_images),
             "rgb_compress": CUSTOM_RUNTIME_CONFIG.rgb_compress,
             "jpeg_optimize": CUSTOM_RUNTIME_CONFIG.jpeg_optimize,
             "inline_vector_env": CUSTOM_RUNTIME_CONFIG.inline_vector_env,
@@ -215,6 +318,7 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
             "set_pose_settle_seconds": CUSTOM_RUNTIME_CONFIG.set_pose_settle_seconds,
         },
         "runtime_config": CUSTOM_RUNTIME_CONFIG.to_dict(),
+        "collection": _collection_config(),
         "astar": {
             "voxel_resolution": args.astar_voxel_resolution,
             "voxel_margin_xy": args.astar_voxel_margin_xy,
@@ -225,6 +329,8 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
             "target_search_radius": args.astar_target_search_radius,
             "max_goal_candidates": args.astar_max_goal_candidates,
             "max_move_voxels": args.astar_max_move_voxels,
+            "turn_cooldown_after": args.astar_turn_cooldown_after,
+            "turn_cooldown_steps": args.astar_turn_cooldown_steps,
         },
         "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "finished_at": None,
@@ -233,6 +339,8 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "num_batches": 0,
         "num_episodes_started": 0,
         "num_episodes_with_samples": 0,
+        "num_episodes_completed": 0,
+        "num_incomplete_episodes": 0,
         "num_plan_failed": 0,
         "num_collision_or_env_done": 0,
         "actions": {},
@@ -240,19 +348,22 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "failures": [],
         "timings": {},
         "command_argv": CUSTOM_ARGV,
-        "action_prompt_version": UAVON_ACTION_PROMPT_VERSION,
+        "action_prompt_version": ACTION_PROMPT_VERSION,
     }
 
 
-def _rebuild_progress_from_jsonl(jsonl_path: Path) -> tuple[int, Counter[str], dict[str, Counter[str]], set[str], int]:
+def _rebuild_progress_from_jsonl(
+    jsonl_path: Path,
+) -> tuple[int, Counter[str], dict[str, Counter[str]], set[str], set[str], int]:
     action_counts: Counter[str] = Counter()
     scene_counts: dict[str, Counter[str]] = defaultdict(Counter)
     episodes_with_samples: set[str] = set()
     bad_lines = 0
     num_rows = 0
+    completed_episodes: set[str] = set()
 
     if not jsonl_path.exists():
-        return num_rows, action_counts, scene_counts, episodes_with_samples, bad_lines
+        return num_rows, action_counts, scene_counts, episodes_with_samples, completed_episodes, bad_lines
 
     with jsonl_path.open("r", encoding="utf-8") as f:
         for line_number, line in enumerate(f, start=1):
@@ -268,12 +379,15 @@ def _rebuild_progress_from_jsonl(jsonl_path: Path) -> tuple[int, Counter[str], d
                 action_counts[str(action)] += 1
             scene = str(data.get("map_name") or "unknown")
             episode_id = str(data.get("episode_id", data.get("task_id", "")))
-            episodes_with_samples.add(f"{scene}/{episode_id}")
+            episode_key = f"{scene}/{episode_id}"
+            episodes_with_samples.add(episode_key)
+            if data.get("action") == "stop" or data.get("is_terminal_action"):
+                completed_episodes.add(episode_key)
             scene_counts[scene]["rows"] += 1
             if action:
                 scene_counts[scene][f"action_{action}"] += 1
 
-    return num_rows, action_counts, scene_counts, episodes_with_samples, bad_lines
+    return num_rows, action_counts, scene_counts, episodes_with_samples, completed_episodes, bad_lines
 
 
 def main() -> None:
@@ -281,6 +395,8 @@ def main() -> None:
         raise RuntimeError("A* data generation requires --is_fixed false.")
     if custom_args.max_samples <= 0:
         raise ValueError("--max_samples must be positive")
+    if custom_args.separate_view_images and CUSTOM_RUNTIME_CONFIG.front_view_only:
+        raise ValueError("--separate_view_images requires --front_view_only false")
 
     output_dir = Path(custom_args.output_dir).resolve()
     jsonl_path = output_dir / "train.jsonl"
@@ -289,17 +405,84 @@ def main() -> None:
     action_counts: Counter[str] = Counter()
     scene_counts: dict[str, Counter[str]] = defaultdict(Counter)
     episodes_with_samples: set[str] = set()
+    completed_episode_keys: set[str] = set()
     if stats_path.exists() and not custom_args.overwrite:
         stats = json.loads(stats_path.read_text())
+        recorded_collection = stats.setdefault("collection", {})
+        recorded_variant = str(recorded_collection.get("variant", custom_args.collection_variant))
+        if recorded_variant != custom_args.collection_variant:
+            raise RuntimeError(
+                "Cannot resume with different collection variant: "
+                f"recorded={recorded_variant} requested={custom_args.collection_variant}. "
+                "Use a fresh output directory or --overwrite."
+            )
+        recorded_view_mode = str(recorded_collection.get("view_mode", VIEW_MODE))
+        if recorded_view_mode != VIEW_MODE:
+            raise RuntimeError(
+                "Cannot resume with different image view mode: "
+                f"recorded={recorded_view_mode} requested={VIEW_MODE}. "
+                "Use a fresh output directory or --overwrite."
+            )
+        recorded_separate_view_images = bool(recorded_collection.get("separate_view_images", False))
+        if recorded_separate_view_images != bool(custom_args.separate_view_images):
+            raise RuntimeError(
+                "Cannot resume with different separate-view-image mode: "
+                f"recorded={recorded_separate_view_images} requested={bool(custom_args.separate_view_images)}. "
+                "Use a fresh output directory or --overwrite."
+            )
+        recorded_complete_trajectories = bool(recorded_collection.get("complete_trajectories", False))
+        if recorded_complete_trajectories != bool(custom_args.complete_trajectories):
+            raise RuntimeError(
+                "Cannot resume with different complete-trajectory mode: "
+                f"recorded={recorded_complete_trajectories} requested={bool(custom_args.complete_trajectories)}. "
+                "Use a fresh output directory or --overwrite."
+            )
+        recorded_movement_unit = float(
+            recorded_collection.get("movement_unit_meters_approx", _movement_unit_meters_approx())
+        )
+        if abs(recorded_movement_unit - _movement_unit_meters_approx()) > 1e-6:
+            raise RuntimeError(
+                "Cannot resume with different approximate movement unit: "
+                f"recorded={recorded_movement_unit} requested={_movement_unit_meters_approx()}. "
+                "Use a fresh output directory or --overwrite."
+            )
+        recorded_collection.update(_collection_config())
+        recorded_astar = stats.setdefault("astar", {})
+        recorded_turn_cooldown = (
+            int(recorded_astar.get("turn_cooldown_after", 0)),
+            int(recorded_astar.get("turn_cooldown_steps", 0)),
+        )
+        requested_turn_cooldown = (
+            int(args.astar_turn_cooldown_after),
+            int(args.astar_turn_cooldown_steps),
+        )
+        if recorded_turn_cooldown != requested_turn_cooldown:
+            raise RuntimeError(
+                "Cannot resume with different A* turn-cooldown settings: "
+                f"recorded={recorded_turn_cooldown} requested={requested_turn_cooldown}. "
+                "Use a fresh output directory or --overwrite."
+            )
+        recorded_astar.setdefault("turn_cooldown_after", recorded_turn_cooldown[0])
+        recorded_astar.setdefault("turn_cooldown_steps", recorded_turn_cooldown[1])
         (
             rebuilt_rows,
             action_counts,
             scene_counts,
             episodes_with_samples,
+            completed_episodes,
             bad_lines,
         ) = _rebuild_progress_from_jsonl(jsonl_path)
+        completed_episode_keys = completed_episodes
         if bad_lines:
             raise RuntimeError(f"Cannot resume with {bad_lines} invalid JSONL lines in {jsonl_path}")
+        if custom_args.complete_trajectories:
+            incomplete_episodes = sorted(episodes_with_samples - completed_episodes)
+            if incomplete_episodes:
+                preview = ", ".join(incomplete_episodes[:5])
+                raise RuntimeError(
+                    "Cannot resume complete-trajectory collection with incomplete existing episodes "
+                    f"in {jsonl_path}: {preview}. Use a fresh output directory or --overwrite."
+                )
         if rebuilt_rows != stats.get("num_rows"):
             print(
                 f"[generate] correcting stale stats rows {stats.get('num_rows')} -> {rebuilt_rows} "
@@ -308,11 +491,13 @@ def main() -> None:
             )
         stats["num_rows"] = rebuilt_rows
         stats["num_episodes_with_samples"] = len(episodes_with_samples)
+        stats["num_episodes_completed"] = len(completed_episodes)
         stats["actions"] = dict(sorted(action_counts.items()))
         stats["scenes"] = {key: dict(value) for key, value in sorted(scene_counts.items())}
         stats["resume_batch_size"] = args.batchSize
         stats["resume_max_actions"] = args.maxActions
         stats["resume_command_argv"] = CUSTOM_ARGV
+        stats["action_prompt_version"] = ACTION_PROMPT_VERSION
         _write_stats(stats_path, stats)
         print(f"Resuming from {stats['num_rows']} rows, {len(episodes_with_samples)} episodes already done")
     else:
@@ -366,9 +551,12 @@ def main() -> None:
                 stats["astar_cache"] = {
                     "hits": int(getattr(oracle, "cache_hits", 0)),
                     "misses": int(getattr(oracle, "cache_misses", 0)),
-                    "enabled": runtime_config_from_env().astar_plan_cache,
+                    "enabled": runtime_config_from_env().astar_plan_cache
+                    and not oracle.turn_cooldown_config.enabled,
                 }
+                stats["astar_turn_cooldown"] = oracle.get_turn_cooldown_stats()
                 plan_summaries = list(oracle.plan_summaries)
+                batch_completed_episodes: set[str] = set()
                 active = []
                 for batch_index, summary in enumerate(plan_summaries):
                     failed = "failed" in summary.lower()
@@ -384,13 +572,13 @@ def main() -> None:
                         )
 
                 for _step in range(args.maxActions):
-                    if stats["num_rows"] >= custom_args.max_samples or not any(active):
+                    if (stats["num_rows"] >= custom_args.max_samples and not custom_args.complete_trajectories) or not any(active):
                         break
                     inputs = list(range(len(env_batch)))
                     actions, step_sizes, dones = oracle.run(inputs, fixed=False)
 
                     for batch_index, task in enumerate(env_batch):
-                        if stats["num_rows"] >= custom_args.max_samples:
+                        if stats["num_rows"] >= custom_args.max_samples and not custom_args.complete_trajectories:
                             break
                         if not active[batch_index]:
                             continue
@@ -411,11 +599,17 @@ def main() -> None:
                         sample_id = f"{scene}_{episode_id}_{int(observations[batch_index][-1].get('step', _step)):06d}_{stats['num_rows']:08d}"
                         rel_image_path = Path("images") / scene / episode_id / f"{sample_id}.jpg"
                         stage_start = time.time()
-                        _save_image(observations[batch_index][-1], output_dir / rel_image_path, custom_args.image_quality)
+                        rel_image_paths, image_view_names = _save_observation_images(
+                            observations[batch_index][-1],
+                            output_dir,
+                            rel_image_path,
+                            custom_args.image_quality,
+                        )
                         _add_timing(stats, "save_image", time.time() - stage_start)
                         record = _record_sample(
                             sample_id=sample_id,
-                            rel_image_path=rel_image_path,
+                            rel_image_paths=rel_image_paths,
+                            image_view_names=image_view_names,
                             task=task,
                             observation=observations[batch_index][-1],
                             action=action,
@@ -449,8 +643,13 @@ def main() -> None:
 
                         if dones[batch_index]:
                             active[batch_index] = False
+                            episode_key = f"{scene}/{episode_id}"
+                            if episode_key not in batch_completed_episodes:
+                                batch_completed_episodes.add(episode_key)
+                                completed_episode_keys.add(episode_key)
+                                stats["num_episodes_completed"] = int(stats.get("num_episodes_completed", 0)) + 1
 
-                    if stats["num_rows"] >= custom_args.max_samples or not any(active):
+                    if (stats["num_rows"] >= custom_args.max_samples and not custom_args.complete_trajectories) or not any(active):
                         break
 
                     stage_start = time.time()
@@ -480,12 +679,19 @@ def main() -> None:
             pass
 
     stats["finished_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    stats["action_prompt_version"] = UAVON_ACTION_PROMPT_VERSION
+    stats["action_prompt_version"] = ACTION_PROMPT_VERSION
     stats["elapsed_seconds"] = round(time.time() - start_time, 3)
     stats["num_episodes_with_samples"] = len(episodes_with_samples)
+    stats["num_episodes_completed"] = len(completed_episode_keys)
+    stats["num_incomplete_episodes"] = max(0, len(episodes_with_samples) - len(completed_episode_keys))
     stats["actions"] = dict(sorted(action_counts.items()))
     stats["scenes"] = {key: dict(value) for key, value in sorted(scene_counts.items())}
     _write_stats(stats_path, stats)
+    if custom_args.complete_trajectories and stats["num_incomplete_episodes"]:
+        raise RuntimeError(
+            "Complete-trajectory collection ended with "
+            f"{stats['num_incomplete_episodes']} incomplete episodes. See {stats_path}."
+        )
     print(json.dumps(stats, indent=2, ensure_ascii=False), flush=True)
 
 

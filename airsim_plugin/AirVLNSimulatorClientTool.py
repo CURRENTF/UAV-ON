@@ -435,19 +435,21 @@ class AirVLNSimulatorClientTool:
 
         return True
     
-    def getImageResponses(self, cameras=['0', '1', '2', '3'], poses=None):
+    def getImageResponses(self, cameras=('0', '1', '2', '3'), poses=None):
+        runtime_config = runtime_config_from_env()
+        active_cameras = ('0',) if runtime_config.front_view_only else tuple(cameras)
+
         def _getImages(airsim_client: airsim.VehicleClient):
             if airsim_client is None:
                 raise Exception('client is None.')
                 return None, None
-            runtime_config = runtime_config_from_env()
             rgb_only = runtime_config.rgb_only
             rgb_compress = runtime_config.rgb_compress
             time_sleep_cnt = 0
             while True:
                 try:
                     ImageRequest = []
-                    for camera_name in cameras:
+                    for camera_name in active_cameras:
                         ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.Scene, pixels_as_float=False, compress=rgb_compress))
                         if not rgb_only:
                             ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.DepthPerspective, pixels_as_float=True, compress=False))
@@ -460,7 +462,7 @@ class AirVLNSimulatorClientTool:
                     image_datas = airsim_client.simGetImages(requests=ImageRequest)
                     airsim_client.simPause(True)
                     images, depth_images = [], []
-                    for idx, camera_name in enumerate(cameras):
+                    for idx, camera_name in enumerate(active_cameras):
                         if rgb_only:
                             rgb_resp = image_datas[idx]
                         else:

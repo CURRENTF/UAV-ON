@@ -13,11 +13,20 @@ gpu_id="${UAV_ON_GPU_ID:-0}"
 sim_port="${UAV_ON_SIM_PORT:-30000}"
 extra_args=()
 [[ -n "${UAV_ON_RGB_ONLY+x}" ]] && extra_args+=(--rgb_only "$UAV_ON_RGB_ONLY")
+[[ -n "${UAV_ON_FRONT_VIEW_ONLY+x}" ]] && extra_args+=(--front_view_only "$UAV_ON_FRONT_VIEW_ONLY")
+[[ -n "${UAV_ON_SEPARATE_VIEW_IMAGES+x}" ]] && extra_args+=(--separate_view_images "$UAV_ON_SEPARATE_VIEW_IMAGES")
 [[ -n "${UAV_ON_RGB_COMPRESS+x}" ]] && extra_args+=(--rgb_compress "$UAV_ON_RGB_COMPRESS")
 [[ -n "${UAV_ON_JPEG_OPTIMIZE+x}" ]] && extra_args+=(--jpeg_optimize "$UAV_ON_JPEG_OPTIMIZE")
 [[ -n "${UAV_ON_INLINE_VECTOR_ENV+x}" ]] && extra_args+=(--inline_vector_env "$UAV_ON_INLINE_VECTOR_ENV")
 [[ -n "${UAV_ON_IMAGE_SETTLE_SECONDS+x}" ]] && extra_args+=(--image_settle_seconds "$UAV_ON_IMAGE_SETTLE_SECONDS")
 [[ -n "${UAV_ON_SET_POSE_SETTLE_SECONDS+x}" ]] && extra_args+=(--set_pose_settle_seconds "$UAV_ON_SET_POSE_SETTLE_SECONDS")
+[[ -n "${UAV_ON_COLLECTION_VARIANT+x}" ]] && extra_args+=(--collection_variant "$UAV_ON_COLLECTION_VARIANT")
+[[ -n "${UAV_ON_COLLECTION_TAGS+x}" ]] && extra_args+=(--collection_tags "$UAV_ON_COLLECTION_TAGS")
+[[ -n "${UAV_ON_COLLECTION_NOTE+x}" ]] && extra_args+=(--collection_note "$UAV_ON_COLLECTION_NOTE")
+[[ -n "${UAV_ON_COLLECTION_SCENE_BALANCE_MODE+x}" ]] && extra_args+=(--scene_balance_mode "$UAV_ON_COLLECTION_SCENE_BALANCE_MODE")
+[[ -n "${UAV_ON_COLLECTION_TARGET_TOTAL_SAMPLES+x}" ]] && extra_args+=(--target_total_samples "$UAV_ON_COLLECTION_TARGET_TOTAL_SAMPLES")
+[[ -n "${UAV_ON_COLLECTION_TARGET_SAMPLES_PER_SCENE+x}" ]] && extra_args+=(--target_samples_per_scene "$UAV_ON_COLLECTION_TARGET_SAMPLES_PER_SCENE")
+[[ -n "${UAV_ON_GENERATE_COMPLETE_TRAJECTORIES+x}" ]] && extra_args+=(--complete_trajectories "$UAV_ON_GENERATE_COMPLETE_TRAJECTORIES")
 
 CUDA_VISIBLE_DEVICES="$cuda_visible_devices" "$python_bin" -u "$root_dir/scripts/generate_qwen3vl_action_dataset_online.py" \
     --output_dir "$output_dir" \
@@ -44,5 +53,7 @@ CUDA_VISIBLE_DEVICES="$cuda_visible_devices" "$python_bin" -u "$root_dir/scripts
     --astar_target_search_radius "${UAV_ON_ASTAR_TARGET_SEARCH_RADIUS:-20.0}" \
     --astar_max_goal_candidates "${UAV_ON_ASTAR_MAX_GOAL_CANDIDATES:-128}" \
     --astar_max_move_voxels "${UAV_ON_ASTAR_MAX_MOVE_VOXELS:-1}" \
+    --astar_turn_cooldown_after "${UAV_ON_ASTAR_TURN_COOLDOWN_AFTER:-0}" \
+    --astar_turn_cooldown_steps "${UAV_ON_ASTAR_TURN_COOLDOWN_STEPS:-0}" \
     --astar_keep_voxels "${UAV_ON_ASTAR_KEEP_VOXELS:-false}" \
     "$@"

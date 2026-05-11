@@ -48,6 +48,7 @@ class UavOnRuntimeConfig:
     verbose_pose: bool = False
     set_pose_settle_seconds: float = 0.2
     rgb_only: bool = False
+    front_view_only: bool = False
     rgb_compress: bool = True
     image_settle_seconds: float = 0.2
     jpeg_optimize: bool = True
@@ -64,6 +65,7 @@ class UavOnRuntimeConfig:
             verbose_pose=env_bool("UAV_ON_VERBOSE_POSE", False),
             set_pose_settle_seconds=env_float("UAV_ON_SET_POSE_SETTLE_SECONDS", 0.2),
             rgb_only=env_bool("UAV_ON_RGB_ONLY", False),
+            front_view_only=env_bool("UAV_ON_FRONT_VIEW_ONLY", False),
             rgb_compress=env_bool("UAV_ON_RGB_COMPRESS", True),
             image_settle_seconds=env_float("UAV_ON_IMAGE_SETTLE_SECONDS", 0.2),
             jpeg_optimize=env_bool("UAV_ON_JPEG_OPTIMIZE", True),
@@ -81,6 +83,7 @@ class UavOnRuntimeConfig:
             "verbose_pose": "UAV_ON_VERBOSE_POSE" in os.environ,
             "set_pose_settle_seconds": "UAV_ON_SET_POSE_SETTLE_SECONDS" in os.environ,
             "rgb_only": "UAV_ON_RGB_ONLY" in os.environ,
+            "front_view_only": "UAV_ON_FRONT_VIEW_ONLY" in os.environ,
             "rgb_compress": "UAV_ON_RGB_COMPRESS" in os.environ,
             "image_settle_seconds": "UAV_ON_IMAGE_SETTLE_SECONDS" in os.environ,
             "jpeg_optimize": "UAV_ON_JPEG_OPTIMIZE" in os.environ,
@@ -95,6 +98,7 @@ class UavOnRuntimeConfig:
             "verbose_pose": "UAV_ON_VERBOSE_POSE",
             "set_pose_settle_seconds": "UAV_ON_SET_POSE_SETTLE_SECONDS",
             "rgb_only": "UAV_ON_RGB_ONLY",
+            "front_view_only": "UAV_ON_FRONT_VIEW_ONLY",
             "rgb_compress": "UAV_ON_RGB_COMPRESS",
             "image_settle_seconds": "UAV_ON_IMAGE_SETTLE_SECONDS",
             "jpeg_optimize": "UAV_ON_JPEG_OPTIMIZE",
@@ -112,6 +116,7 @@ class UavOnRuntimeConfig:
             "UAV_ON_VERBOSE_POSE": _bool_env(self.verbose_pose),
             "UAV_ON_SET_POSE_SETTLE_SECONDS": str(self.set_pose_settle_seconds),
             "UAV_ON_RGB_ONLY": _bool_env(self.rgb_only),
+            "UAV_ON_FRONT_VIEW_ONLY": _bool_env(self.front_view_only),
             "UAV_ON_RGB_COMPRESS": _bool_env(self.rgb_compress),
             "UAV_ON_IMAGE_SETTLE_SECONDS": str(self.image_settle_seconds),
             "UAV_ON_JPEG_OPTIMIZE": _bool_env(self.jpeg_optimize),

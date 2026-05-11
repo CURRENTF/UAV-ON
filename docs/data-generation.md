@@ -317,6 +317,212 @@ On this local 4080, `batchSize=8` with raw RGB saturated the GPU and stalled in
 initial multi-instance capture. Keep the local production recommendation at
 `batchSize=4` unless a later run proves a higher batch size is stable.
 
+## Front RGB 3m Balanced 20k Run
+
+Observed setup on 2026-05-11 in `/root/autodl-tmp/UAV-ON`.
+
+Launch the fast front-only 3m approximate data collection with:
+
+```bash
+cd /root/autodl-tmp/UAV-ON
+bash scripts/tmp/run_front_rgb_3m_20k_balanced_fast_approx.sh
+```
+
+The runner starts the train simulator server if port `30000` is not already
+served, then launches `scripts/generate_qwen3vl_action_dataset_all_train_scenes.sh`
+in the background. It writes:
+
+- Output root:
+  `/root/autodl-fs/datasets/uavon_qwen3vl_action_front_rgb_3m_20k_balanced_fast_approx`
+- Generator log:
+  `/root/autodl-fs/logs/front_rgb_3m_20k_balanced_fast_approx_generator.log`
+- Server log:
+  `/root/autodl-fs/logs/front_rgb_3m_20k_balanced_fast_approx_server.log`
+
+The run targets 2,000 rows per train scene across 10 scenes. Each per-scene
+shard records `collection.variant=front_rgb_3m_20k_balanced_fast_approx`,
+`view_mode=front_rgb`, `rgb_only=true`, `front_view_only=true`,
+`movement_unit_meters_approx=3.0`, and `movement_unit_non_strict=true` in
+`generation_stats.json`. Each JSONL sample also carries the same
+`collection_config` and uses the front-RGB prompt version.
+
+Important run settings:
+
+- `UAV_ON_BATCH_SIZE=4`
+- `UAV_ON_KINEMATIC_ACTIONS=1`
+- `UAV_ON_RGB_ONLY=1`
+- `UAV_ON_FRONT_VIEW_ONLY=1`
+- `UAV_ON_RGB_COMPRESS=0`
+- `UAV_ON_JPEG_OPTIMIZE=0`
+- `UAV_ON_INLINE_VECTOR_ENV=1`
+- `UAV_ON_ASTAR_VOXEL_RESOLUTION=3.0`
+- `UAV_ON_ASTAR_MAX_MOVE_VOXELS=1`
+- `UAV_ON_ASTAR_PLAN_CACHE=1`
+
+`UAV_ON_FRONT_VIEW_ONLY=1` changes the AirSim request itself to camera `0`
+only; it is not just a post-save crop from four-view images.
+
+### Image View Modes And Sizes
+
+AirSim RGB cameras are configured at `512x512` in
+`airsim_plugin/AirVLNSimulatorServerTool.py`.
+
+The default `four_view` Qwen3-VL action sample decodes four RGB camera images
+in this order:
+
+```text
+front, left, right, down
+```
+
+The generator resizes each camera image to the minimum square tile size and
+stitches them into one 2x2 grid. With the current `512x512` RGB cameras, the
+stitched image is therefore `1024x1024`.
+
+The `front_rgb` mode records only camera `0` and stores one `512x512` image.
+The `four_view_images` mode stores four separate `512x512` images per sample
+instead of a stitched grid.
+
+Observed with the local Qwen3-VL processor:
+
+- `512x512` front-only image: 256 image pad tokens.
+- `1024x1024` stitched four-view grid: 1024 image pad tokens.
+
+So front-only data reduces the image-token count to about one quarter of the
+stitched four-view grid. If a future run switches from stitched `four_view` to
+`four_view_images`, verify the training/eval code consumes the same message
+format; the prompt version and image count differ.
+
+### Complete-Trajectory Collection
+
+The default generator treats `--max_samples` as a hard row limit. If a run asks
+for 2,000 rows, it stops immediately after row 2,000 and the final batch can
+contain truncated episodes.
+
+For trajectory training data, use complete-trajectory mode:
+
+```bash
+cd /root/autodl-tmp/UAV-ON
+bash scripts/run_front_rgb_3m_20k_balanced_fast_approx_complete_traj.sh
+```
+
+This runner uses the same front-only, RGB-only, approximate 3m settings as the
+fast run, but writes to a separate output root:
+
+```text
+/root/autodl-fs/datasets/uavon_qwen3vl_action_front_rgb_3m_20k_balanced_fast_approx_complete_traj
+```
+
+Complete-trajectory mode sets `UAV_ON_GENERATE_COMPLETE_TRAJECTORIES=1`. In
+that mode the per-scene target is a lower bound: the generator stops launching
+new batches after reaching the target, then lets the currently active batch
+finish naturally at the A* `stop` action. The final row count can therefore be
+slightly above the target, but every collected episode in a clean run should
+have a terminal `stop` sample.
+
+The mode is recorded in both `generation_stats.json` and per-sample
+`collection_config` as:
+
+- `complete_trajectories=true`
+- `sample_target_is_minimum=true`
+
+Each JSONL row also contains `is_terminal_action`, so complete trajectories can
+be reconstructed by grouping on `(map_name, episode_id)`, sorting by
+`frame_index`, and checking that the last row has `action=stop` or
+`is_terminal_action=true`.
+
+If the scene shard manifest was cleaned up, the all-scenes wrapper rebuilds it
+from `/root/autodl-fs/datasets/uavon_train_generation_balanced.json` with
+`scripts/build_uavon_scene_shards.py` before launching collection.
+
+### Four-View Separate-Image Run
+
+To collect the same approximate 3m, RGB-only, balanced 20k dataset but preserve
+four independent camera images per sample instead of stitching them into one
+grid, run:
+
+```bash
+cd /root/autodl-tmp/UAV-ON
+bash scripts/run_fourview_images_3m_20k_balanced_fast_approx.sh
+```
+
+The output root is:
+
+```text
+/root/autodl-fs/datasets/uavon_qwen3vl_action_4view_images_3m_20k_balanced_fast_approx
+```
+
+Each sample stores:
+
+- `image_paths`: four image paths.
+- `image_view_names`: `["front", "left", "right", "down"]`.
+- `images`: view-name/path pairs.
+- `messages[1].content`: four image entries followed by the text prompt.
+
+The collection metadata records `view_mode=four_view_images`,
+`front_view_only=false`, `separate_view_images=true`, and
+`image_count_per_sample=4`.
+
+## A* Turn-Cooldown Variant
+
+Observed on 2026-05-11 in `/root/autodl-tmp/UAV-ON`.
+
+The default A* behavior is unchanged. Turn cooldown is disabled unless both
+parameters are positive:
+
+- `--astar_turn_cooldown_after`: after this many turn actions, start cooldown.
+- `--astar_turn_cooldown_steps`: number of following non-turn actions during
+  which additional turns are blocked.
+
+The shell wrappers forward matching environment variables:
+
+```bash
+cd /root/autodl-tmp/UAV-ON
+export UAV_ON_ASTAR_TURN_COOLDOWN_AFTER=1
+export UAV_ON_ASTAR_TURN_COOLDOWN_STEPS=2
+
+bash scripts/generate_qwen3vl_action_dataset.sh
+```
+
+For a single already-open AirSim scene, smoke it with:
+
+```bash
+cd /root/autodl-tmp/UAV-ON
+python scripts/smoke_astar_existing_scene.py \
+  --dataset astar_smoke_citypark_1.json \
+  --output-dir astar_logs/citypark_turn_cooldown_after1_steps2 \
+  --port 30100 \
+  --max-actions 100 \
+  --execution-mode kinematic \
+  --astar-turn-cooldown-after 1 \
+  --astar-turn-cooldown-steps 2
+```
+
+Observed result for that smoke on 2026-05-11: the planner produced
+`turn_cooldown=on`, `path_len=32`, `actions=34`, and `turns=2`; the first 30
+kinematic actions wrote
+`astar_logs/citypark_turn_cooldown_after1_steps2/log/trajectory.jsonl` without
+collisions.
+
+When enabled, the planner searches in action space with state
+`(x, y, z, heading, cooldown_remaining, turns_since_cooldown)`. This keeps the
+cooldown constraint inside planning instead of smoothing a path afterward. The
+A* path cache is disabled for this variant because the selected path depends on
+start yaw and cooldown state, not only on the voxel grid and target.
+
+`generation_stats.json` records the requested parameters under `astar` and the
+current generator-process aggregate under `astar_turn_cooldown`:
+
+- `action_count`, `turn_count`, `turn_density`
+- `alternating_turn_count`
+- `cooldown_triggers`
+- `suppressed_turn_candidates`
+- `expanded_states`
+
+Do not resume an existing output directory with different turn-cooldown
+settings. The generator now rejects that case so one JSONL shard does not mix
+labels produced by different A* variants. Use a fresh output directory or
+`--overwrite` when changing these parameters.
+
 ## Troubleshooting
 
 Symptom: generator is alive but `train.jsonl` and images stop advancing.
