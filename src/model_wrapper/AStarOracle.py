@@ -14,6 +14,7 @@ from typing import Any, Optional, Sequence
 import airsim
 import numpy as np
 
+from src.common.runtime_config import runtime_config_from_env
 from model_wrapper.base_model import BaseModelWrapper
 from utils.logger import logger
 
@@ -495,7 +496,7 @@ class AStarOracle(BaseModelWrapper):
 
         episode_id = str(item.get("task_id", item.get("episode_id", batch_index)))
         map_name = str(item.get("map_name", "unknown"))
-        use_cache = os.environ.get("UAV_ON_ASTAR_PLAN_CACHE", "1").lower() in {"1", "true", "yes"}
+        use_cache = runtime_config_from_env().astar_plan_cache
         cache_key = self._cache_key(
             item=item,
             center=center,

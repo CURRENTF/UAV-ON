@@ -14,16 +14,15 @@ Run the Qwen3-VL UAV-ON action policy with a reproducible shell pipeline:
 ## Scripts
 
 - Smoke eval:
-  `/root/autodl-tmp/UAV-ON/scripts/tmp/smoke_qwen3vl_dora_eval.sh`
+  `/root/autodl-tmp/UAV-ON/scripts/qwen3vl_dora_smoke_eval.sh`
 - Full pipeline:
-  `/root/autodl-tmp/UAV-ON/scripts/tmp/run_qwen3vl_dora_nonforward_1k_pipeline.sh`
+  `/root/autodl-tmp/UAV-ON/scripts/run_qwen3vl_dora_nonforward_1k_pipeline.sh`
 - Dataset rebalance helper:
   `/root/autodl-tmp/LightningVLN/scripts/make_qwen3vl_action_rebalanced_dataset.py`
 - Qwen3-VL training wrapper:
   `/root/autodl-tmp/LightningVLN/scripts/train_qwen3vl_action_baseline.sh`
 
-`scripts/tmp` is gitignored in the UAV-ON repo, but these paths are the local
-operational scripts used on this machine.
+`scripts/tmp` is gitignored and should be used only for local one-off debugging.
 
 ## Training Settings
 
@@ -98,7 +97,7 @@ Smoke eval only:
 cd /root/autodl-tmp/UAV-ON
 SMOKE_TASKS=1 UAV_ON_MAX_ACTIONS=1 \
 UAV_ON_EVAL_SAVE_PATH=/root/autodl-fs/evals/qwen3vl_dora_smoke_eval_current \
-bash scripts/tmp/smoke_qwen3vl_dora_eval.sh
+bash scripts/qwen3vl_dora_smoke_eval.sh
 ```
 
 Full train and eval pipeline:
@@ -106,14 +105,14 @@ Full train and eval pipeline:
 ```bash
 cd /root/autodl-tmp/UAV-ON
 RUN_SMOKE=0 REBALANCE_OVERWRITE=1 \
-bash scripts/tmp/run_qwen3vl_dora_nonforward_1k_pipeline.sh
+bash scripts/run_qwen3vl_dora_nonforward_1k_pipeline.sh
 ```
 
 Detached launch:
 
 ```bash
 cd /root/autodl-tmp/UAV-ON
-setsid bash -lc 'cd /root/autodl-tmp/UAV-ON && RUN_SMOKE=0 REBALANCE_OVERWRITE=1 bash scripts/tmp/run_qwen3vl_dora_nonforward_1k_pipeline.sh' \
+setsid bash -lc 'cd /root/autodl-tmp/UAV-ON && RUN_SMOKE=0 REBALANCE_OVERWRITE=1 bash scripts/run_qwen3vl_dora_nonforward_1k_pipeline.sh' \
   >> /root/autodl-fs/logs/qwen3vl_nonforward80_dora_1k_pipeline_launcher.log 2>&1 < /dev/null &
 ```
 
@@ -133,6 +132,10 @@ setsid bash -lc 'cd /root/autodl-tmp/UAV-ON && RUN_SMOKE=0 REBALANCE_OVERWRITE=1
   `/root/autodl-fs/logs/qwen3vl_nonforward80_dora_1k_eval.log`
 - Summary log:
   `/root/autodl-fs/logs/qwen3vl_nonforward80_dora_1k_summary.log`
+- Runtime config:
+  `<eval_root>/runtime_config.launch.json` and `<eval_root>/runtime_config.json`
+- Pipeline metadata:
+  `<eval_root>/pipeline_metadata.json`
 
 ## Notes
 
@@ -140,3 +143,7 @@ The smoke eval uses the `kv` conda environment because it has the Qwen3-VL
 runtime dependencies. On this machine, `yacs==0.1.8` and `numba==0.65.1` were
 added to `kv` after the first smoke attempt exposed missing imports from the
 UAV-ON environment code.
+
+Runtime behavior variables are centralized in `src/common/runtime_config.py`.
+See `docs/runtime-config.md` for the list of `UAV_ON_*` variables that affect
+data generation and closed-loop evaluation.

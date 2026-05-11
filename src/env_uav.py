@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 
 import tqdm
 from src.common.param import args
+from src.common.runtime_config import runtime_config_from_env
 from utils.logger import logger
 from airsim_plugin.airsim_settings import AirsimActions
 sys.path.append(str(Path(str(os.getcwd())).resolve()))
@@ -135,14 +136,14 @@ class AirVLNENV:
 
     def init_VectorEnvUtil(self):
         self.delete_VectorEnvUtil()
-        if os.environ.get("UAV_ON_INLINE_VECTOR_ENV", "").lower() in {"1", "true", "yes"}:
+        runtime_config = runtime_config_from_env()
+        if runtime_config.inline_vector_env:
             self.VectorEnvUtil = InlineVectorEnvUtil(self.batch_size)
             return
-        vector_start_method = os.environ.get("UAV_ON_VECTOR_ENV_START_METHOD", "forkserver")
         self.VectorEnvUtil = VectorEnvUtil(
             self.scenes,
             self.batch_size,
-            multiprocessing_start_method=vector_start_method,
+            multiprocessing_start_method=runtime_config.vector_env_start_method,
         )
 
     def delete_VectorEnvUtil(self):
@@ -402,7 +403,7 @@ class AirVLNENV:
                 format_fly_type[index1].append(fly_types[cnt])
                 cnt += 1
         
-        if os.environ.get("UAV_ON_KINEMATIC_ACTIONS", "").lower() in {"1", "true", "yes"}:
+        if runtime_config_from_env().kinematic_actions:
             set_ok = self.simulator_tool.setPoses(poses=format_pose)
             result = [
                 [{"collision": False} for _ in item["open_scenes"]]

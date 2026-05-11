@@ -15,25 +15,22 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
+
+from common.runtime_config import (  # noqa: E402
+    UavOnRuntimeConfig,
+    runtime_config_from_env,
+    str_to_bool,
+)
+
 
 def _str2bool(value):
-    if isinstance(value, bool):
-        return value
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "y", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "n", "off"}:
-        return False
-    raise argparse.ArgumentTypeError(f"Expected boolean value, got {value!r}")
+    return str_to_bool(value)
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return _str2bool(value)
-
-
+DEFAULT_RUNTIME_CONFIG = runtime_config_from_env()
 CUSTOM_ARGV = sys.argv[:]
 custom_parser = argparse.ArgumentParser(add_help=False)
 custom_parser.add_argument("--output_dir", required=True)
@@ -41,27 +38,38 @@ custom_parser.add_argument("--max_samples", type=int, default=20000)
 custom_parser.add_argument("--max_episodes", type=int, default=0)
 custom_parser.add_argument("--flush_every", type=int, default=100)
 custom_parser.add_argument("--image_quality", type=int, default=90)
-custom_parser.add_argument("--rgb_only", type=_str2bool, default=_env_bool("UAV_ON_RGB_ONLY", False))
-custom_parser.add_argument("--rgb_compress", type=_str2bool, default=_env_bool("UAV_ON_RGB_COMPRESS", True))
-custom_parser.add_argument("--jpeg_optimize", type=_str2bool, default=_env_bool("UAV_ON_JPEG_OPTIMIZE", True))
-custom_parser.add_argument("--inline_vector_env", type=_str2bool, default=_env_bool("UAV_ON_INLINE_VECTOR_ENV", False))
-custom_parser.add_argument("--image_settle_seconds", type=float, default=float(os.environ.get("UAV_ON_IMAGE_SETTLE_SECONDS", "0.2")))
-custom_parser.add_argument("--set_pose_settle_seconds", type=float, default=float(os.environ.get("UAV_ON_SET_POSE_SETTLE_SECONDS", "0.2")))
+custom_parser.add_argument("--rgb_only", type=_str2bool, default=DEFAULT_RUNTIME_CONFIG.rgb_only)
+custom_parser.add_argument("--rgb_compress", type=_str2bool, default=DEFAULT_RUNTIME_CONFIG.rgb_compress)
+custom_parser.add_argument("--jpeg_optimize", type=_str2bool, default=DEFAULT_RUNTIME_CONFIG.jpeg_optimize)
+custom_parser.add_argument("--inline_vector_env", type=_str2bool, default=DEFAULT_RUNTIME_CONFIG.inline_vector_env)
+custom_parser.add_argument("--image_settle_seconds", type=float, default=DEFAULT_RUNTIME_CONFIG.image_settle_seconds)
+custom_parser.add_argument("--set_pose_settle_seconds", type=float, default=DEFAULT_RUNTIME_CONFIG.set_pose_settle_seconds)
 custom_parser.add_argument("--overwrite", action="store_true")
 custom_parser.add_argument("--status_every", type=int, default=100)
 custom_args, remaining_argv = custom_parser.parse_known_args()
 sys.argv = [sys.argv[0]] + remaining_argv
 
-os.environ["UAV_ON_RGB_ONLY"] = "1" if custom_args.rgb_only else "0"
-os.environ["UAV_ON_RGB_COMPRESS"] = "1" if custom_args.rgb_compress else "0"
-os.environ["UAV_ON_JPEG_OPTIMIZE"] = "1" if custom_args.jpeg_optimize else "0"
-os.environ["UAV_ON_INLINE_VECTOR_ENV"] = "1" if custom_args.inline_vector_env else "0"
-os.environ["UAV_ON_IMAGE_SETTLE_SECONDS"] = str(custom_args.image_settle_seconds)
-os.environ["UAV_ON_SET_POSE_SETTLE_SECONDS"] = str(custom_args.set_pose_settle_seconds)
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "src"))
+CUSTOM_RUNTIME_CONFIG = UavOnRuntimeConfig(
+    inline_vector_env=custom_args.inline_vector_env,
+    vector_env_start_method=DEFAULT_RUNTIME_CONFIG.vector_env_start_method,
+    kinematic_actions=DEFAULT_RUNTIME_CONFIG.kinematic_actions,
+    scene_boot_seconds=DEFAULT_RUNTIME_CONFIG.scene_boot_seconds,
+    action_timeout_seconds=DEFAULT_RUNTIME_CONFIG.action_timeout_seconds,
+    verbose_pose=DEFAULT_RUNTIME_CONFIG.verbose_pose,
+    set_pose_settle_seconds=custom_args.set_pose_settle_seconds,
+    rgb_only=custom_args.rgb_only,
+    rgb_compress=custom_args.rgb_compress,
+    image_settle_seconds=custom_args.image_settle_seconds,
+    jpeg_optimize=custom_args.jpeg_optimize,
+    astar_plan_cache=DEFAULT_RUNTIME_CONFIG.astar_plan_cache,
+)
+custom_env = CUSTOM_RUNTIME_CONFIG.to_env()
+os.environ["UAV_ON_RGB_ONLY"] = custom_env["UAV_ON_RGB_ONLY"]
+os.environ["UAV_ON_RGB_COMPRESS"] = custom_env["UAV_ON_RGB_COMPRESS"]
+os.environ["UAV_ON_JPEG_OPTIMIZE"] = custom_env["UAV_ON_JPEG_OPTIMIZE"]
+os.environ["UAV_ON_INLINE_VECTOR_ENV"] = custom_env["UAV_ON_INLINE_VECTOR_ENV"]
+os.environ["UAV_ON_IMAGE_SETTLE_SECONDS"] = custom_env["UAV_ON_IMAGE_SETTLE_SECONDS"]
+os.environ["UAV_ON_SET_POSE_SETTLE_SECONDS"] = custom_env["UAV_ON_SET_POSE_SETTLE_SECONDS"]
 
 from common.param import args  # noqa: E402
 from common.uavon_action_schema import (  # noqa: E402
@@ -134,8 +142,7 @@ def _make_fourview_grid(images: list[Any]) -> Image.Image:
 def _save_image(observation: dict[str, Any], output_path: Path, quality: int) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     grid = _make_fourview_grid(observation["rgb"])
-    optimize = os.environ.get("UAV_ON_JPEG_OPTIMIZE", "1").lower() in {"1", "true", "yes"}
-    grid.save(output_path, format="JPEG", quality=quality, optimize=optimize)
+    grid.save(output_path, format="JPEG", quality=quality, optimize=CUSTOM_RUNTIME_CONFIG.jpeg_optimize)
 
 
 def _record_sample(
@@ -200,13 +207,14 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "simulator_tool_port": args.simulator_tool_port,
         "gpu_id": args.gpu_id,
         "performance": {
-            "rgb_only": custom_args.rgb_only,
-            "rgb_compress": custom_args.rgb_compress,
-            "jpeg_optimize": custom_args.jpeg_optimize,
-            "inline_vector_env": custom_args.inline_vector_env,
-            "image_settle_seconds": custom_args.image_settle_seconds,
-            "set_pose_settle_seconds": custom_args.set_pose_settle_seconds,
+            "rgb_only": CUSTOM_RUNTIME_CONFIG.rgb_only,
+            "rgb_compress": CUSTOM_RUNTIME_CONFIG.rgb_compress,
+            "jpeg_optimize": CUSTOM_RUNTIME_CONFIG.jpeg_optimize,
+            "inline_vector_env": CUSTOM_RUNTIME_CONFIG.inline_vector_env,
+            "image_settle_seconds": CUSTOM_RUNTIME_CONFIG.image_settle_seconds,
+            "set_pose_settle_seconds": CUSTOM_RUNTIME_CONFIG.set_pose_settle_seconds,
         },
+        "runtime_config": CUSTOM_RUNTIME_CONFIG.to_dict(),
         "astar": {
             "voxel_resolution": args.astar_voxel_resolution,
             "voxel_margin_xy": args.astar_voxel_margin_xy,
@@ -358,8 +366,7 @@ def main() -> None:
                 stats["astar_cache"] = {
                     "hits": int(getattr(oracle, "cache_hits", 0)),
                     "misses": int(getattr(oracle, "cache_misses", 0)),
-                    "enabled": os.environ.get("UAV_ON_ASTAR_PLAN_CACHE", "1").lower()
-                    in {"1", "true", "yes"},
+                    "enabled": runtime_config_from_env().astar_plan_cache,
                 }
                 plan_summaries = list(oracle.plan_summaries)
                 active = []

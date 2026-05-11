@@ -16,6 +16,7 @@ import tqdm
 cur_path=os.path.abspath(os.path.dirname(__file__))
 sys.path.insert(0, cur_path+"/..")
 
+from src.common.runtime_config import runtime_config_from_env
 from utils.logger import logger
 
 
@@ -203,7 +204,9 @@ class AirVLNSimulatorClientTool:
             assert len(result[1]) == 2, '打开场景失败'
             print('waiting for airsim connection...')
             default_boot_seconds = 3 * len(self.machines_info[index]['open_scenes']) + 15
-            boot_seconds = float(os.environ.get("UAV_ON_SCENE_BOOT_SECONDS", default_boot_seconds))
+            boot_seconds = runtime_config_from_env(
+                scene_boot_seconds_default=default_boot_seconds
+            ).scene_boot_seconds
             time.sleep(boot_seconds)
             ip = result[1][0]
             ports = result[1][1]
@@ -301,7 +304,7 @@ class AirVLNSimulatorClientTool:
             imu_sensor = Imu(airsim_client, drone_name=vehicle_name, imu_name="Imu")
             airsim_client.simPause(False)
             future = None
-            action_timeout_sec = float(os.environ.get("UAV_ON_ACTION_TIMEOUT_SECONDS", "12"))
+            action_timeout_sec = runtime_config_from_env().action_timeout_seconds
 
             if fly_type == 'move':
                 drivetrain = airsim.DrivetrainType.MaxDegreeOfFreedom
@@ -384,10 +387,11 @@ class AirVLNSimulatorClientTool:
                 return
             vehicles = airsim_client.listVehicles()
             vehicle_name = vehicles[0] if vehicles else ''
-            verbose_pose = os.environ.get("UAV_ON_VERBOSE_POSE", "").lower() in {"1", "true", "yes"}
+            runtime_config = runtime_config_from_env()
+            verbose_pose = runtime_config.verbose_pose
             if verbose_pose:
                 print(f"set pose vehicle={vehicle_name} target={pose.position}", flush=True)
-            settle_seconds = float(os.environ.get("UAV_ON_SET_POSE_SETTLE_SECONDS", "0.2"))
+            settle_seconds = runtime_config.set_pose_settle_seconds
             airsim_client.simPause(True)
             airsim_client.simSetVehiclePose(pose=pose, ignore_collision=True, vehicle_name=vehicle_name)
             if vehicle_name:
@@ -436,8 +440,9 @@ class AirVLNSimulatorClientTool:
             if airsim_client is None:
                 raise Exception('client is None.')
                 return None, None
-            rgb_only = os.environ.get("UAV_ON_RGB_ONLY", "").lower() in {"1", "true", "yes"}
-            rgb_compress = os.environ.get("UAV_ON_RGB_COMPRESS", "1").lower() in {"1", "true", "yes"}
+            runtime_config = runtime_config_from_env()
+            rgb_only = runtime_config.rgb_only
+            rgb_compress = runtime_config.rgb_compress
             time_sleep_cnt = 0
             while True:
                 try:
@@ -446,7 +451,7 @@ class AirVLNSimulatorClientTool:
                         ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.Scene, pixels_as_float=False, compress=rgb_compress))
                         if not rgb_only:
                             ImageRequest.append(airsim.ImageRequest(camera_name, airsim.ImageType.DepthPerspective, pixels_as_float=True, compress=False))
-                    image_settle_seconds = float(os.environ.get("UAV_ON_IMAGE_SETTLE_SECONDS", "0.2"))
+                    image_settle_seconds = runtime_config.image_settle_seconds
                     if image_settle_seconds > 0:
                         airsim_client.simPause(False)
                         time.sleep(image_settle_seconds)
