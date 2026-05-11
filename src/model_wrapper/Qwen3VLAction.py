@@ -11,11 +11,14 @@ import numpy as np
 from PIL import Image, ImageDraw
 import torch
 
+from common.uavon_action_schema import (
+    QWEN3VL_ACTION_SYSTEM_PROMPT,
+    UAVON_VALID_ACTIONS,
+    build_qwen3vl_action_user_prompt,
+    extract_uavon_action,
+)
 from model_wrapper.base_model import BaseModelWrapper
 from src.common.param import args
-
-
-VALID_ACTIONS = {"forward", "left", "right", "rotl", "rotr", "ascend", "descend", "stop"}
 
 
 def _latest_checkpoint(path: str) -> str:
@@ -29,14 +32,6 @@ def _latest_checkpoint(path: str) -> str:
         return int(match.group(1)) if match else -1
 
     return str(max(checkpoints, key=step))
-
-
-def _extract_action(text: str) -> tuple[str, float | None] | None:
-    match = re.search(r"\b(forward|left|right|rotl|rotr|ascend|descend|stop)\b(?:\s+([-+]?\d+(?:\.\d+)?))?", text)
-    if match is None:
-        return None
-    step_size = float(match.group(2)) if match.group(2) is not None else None
-    return match.group(1), step_size
 
 
 class Qwen3VLAction(BaseModelWrapper):
@@ -120,22 +115,12 @@ class Qwen3VLAction(BaseModelWrapper):
 
     def _messages(self, instruction: str) -> list[dict[str, Any]]:
         return [
-            {"role": "system", "content": "You are a UAV navigation policy. Return only one action name."},
+            {"role": "system", "content": QWEN3VL_ACTION_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": [
                     {"type": "image"},
-                    {
-                        "type": "text",
-                        "text": (
-                            "Current four-view observation is provided as one 2x2 image grid "
-                            "(front, left, right, down).\n"
-                            f"Task instruction:\n{instruction.strip()}\n"
-                            "Choose the A* action for the current state. "
-                            "Allowed actions: forward, left, right, rotl, rotr, ascend, descend, stop.\n"
-                            "Return only the action name."
-                        ),
-                    },
+                    {"type": "text", "text": build_qwen3vl_action_user_prompt(instruction)},
                 ],
             },
         ]
@@ -185,7 +170,7 @@ class Qwen3VLAction(BaseModelWrapper):
         for batch_index, item in enumerate(inputs):
             try:
                 raw_text = self._generate(item["image"], item["instruction"])
-                parsed = _extract_action(raw_text)
+                parsed = extract_uavon_action(raw_text)
                 status = "success" if parsed is not None else "parse_failed"
             except Exception as exc:
                 raw_text = f"{type(exc).__name__}: {exc}"
@@ -195,7 +180,7 @@ class Qwen3VLAction(BaseModelWrapper):
                 action, parsed_step_size = "stop", 0.0
             else:
                 action, parsed_step_size = parsed
-                if action not in VALID_ACTIONS:
+                if action not in UAVON_VALID_ACTIONS:
                     action, parsed_step_size = "stop", 0.0
                     status = "parse_failed"
             step_size = self._default_step_size(action, parsed_step_size, fixed)

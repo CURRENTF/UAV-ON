@@ -64,12 +64,17 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from common.param import args  # noqa: E402
+from common.uavon_action_schema import (  # noqa: E402
+    QWEN3VL_ACTION_SYSTEM_PROMPT,
+    UAVON_ACTION_PROMPT_VERSION,
+    UAVON_VALID_ACTIONS,
+    build_qwen3vl_action_user_prompt,
+)
 from env_uav import AirVLNENV  # noqa: E402
 from model_wrapper.AStarOracle import AStarOracle  # noqa: E402
 
 
-SYSTEM_PROMPT = "You are a UAV navigation policy. Return only one action name."
-VALID_ACTIONS = {"forward", "left", "right", "rotl", "rotr", "ascend", "descend", "stop"}
+SYSTEM_PROMPT = QWEN3VL_ACTION_SYSTEM_PROMPT
 
 
 def _task_instruction(task: dict[str, Any]) -> str:
@@ -85,14 +90,7 @@ def _task_instruction(task: dict[str, Any]) -> str:
 
 
 def _user_prompt(instruction: str) -> str:
-    return (
-        "Current four-view observation is provided as one 2x2 image grid "
-        "(front, left, right, down).\n"
-        f"Task instruction:\n{instruction.strip()}\n"
-        "Choose the A* action for the current state. "
-        "Allowed actions: forward, left, right, rotl, rotr, ascend, descend, stop.\n"
-        "Return only the action name."
-    )
+    return build_qwen3vl_action_user_prompt(instruction)
 
 
 def _decode_rgb(image: Any) -> Image.Image:
@@ -234,6 +232,7 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "failures": [],
         "timings": {},
         "command_argv": CUSTOM_ARGV,
+        "action_prompt_version": UAVON_ACTION_PROMPT_VERSION,
     }
 
 
@@ -389,7 +388,7 @@ def main() -> None:
                         if not active[batch_index]:
                             continue
                         action = actions[batch_index]
-                        if action not in VALID_ACTIONS:
+                        if action not in UAVON_VALID_ACTIONS:
                             stats["failures"].append(
                                 {
                                     "episode_id": str(task.get("episode_id", "")),
@@ -474,6 +473,7 @@ def main() -> None:
             pass
 
     stats["finished_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    stats["action_prompt_version"] = UAVON_ACTION_PROMPT_VERSION
     stats["elapsed_seconds"] = round(time.time() - start_time, 3)
     stats["num_episodes_with_samples"] = len(episodes_with_samples)
     stats["actions"] = dict(sorted(action_counts.items()))

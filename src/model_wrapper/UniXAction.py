@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import torch
 
+from common.uavon_action_schema import UAVON_VALID_ACTIONS
 from model_wrapper.base_model import BaseModelWrapper
 from src.common.param import args
 
@@ -28,9 +29,6 @@ from lightning_vln.training.uavon_action import (  # noqa: E402
     extract_uavon_action,
 )
 from lightning_vln.training.vq_encoding import ChameleonVQEncoder  # noqa: E402
-
-
-VALID_ACTIONS = {"forward", "left", "right", "rotl", "rotr", "ascend", "descend", "stop"}
 
 
 def _latest_checkpoint(path: str) -> str:
@@ -172,7 +170,7 @@ class UniXAction(BaseModelWrapper):
             if parsed is not None:
                 action, _ = parsed
                 action_text = raw_text
-                status = "success" if action in VALID_ACTIONS else "parse_failed"
+                status = "success" if action in UAVON_VALID_ACTIONS else "parse_failed"
                 break
             if next_token == self.tokenizer.eos_token_id:
                 action_text = raw_text
@@ -202,7 +200,7 @@ class UniXAction(BaseModelWrapper):
                 action, parsed_step_size = "stop", 0.0
             else:
                 action, parsed_step_size = parsed
-                if action not in VALID_ACTIONS:
+                if action not in UAVON_VALID_ACTIONS:
                     action, parsed_step_size = "stop", 0.0
             step_size = self._default_step_size(action, parsed_step_size, fixed)
             done = action == "stop"

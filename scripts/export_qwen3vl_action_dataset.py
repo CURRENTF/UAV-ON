@@ -4,15 +4,27 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from statistics import mean
 from typing import Any
 
 import cv2
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "src"))
 
-SYSTEM_PROMPT = "You are a UAV navigation policy. Return only one action name."
-VALID_ACTIONS = {"forward", "left", "right", "rotl", "rotr", "ascend", "descend", "stop"}
+from common.uavon_action_schema import (  # noqa: E402
+    QWEN3VL_ACTION_SYSTEM_PROMPT,
+    UAVON_ACTION_PROMPT_VERSION,
+    UAVON_ACTIONS,
+    UAVON_VALID_ACTIONS,
+    build_qwen3vl_action_user_prompt,
+)
+
+
+SYSTEM_PROMPT = QWEN3VL_ACTION_SYSTEM_PROMPT
 
 
 def _load_json(path: Path) -> Any:
@@ -114,14 +126,7 @@ def _task_instruction(task: dict[str, Any]) -> str:
 
 
 def _user_prompt(instruction: str) -> str:
-    return (
-        "Current four-view observation is provided as one 2x2 image grid "
-        "(front, left, right, down).\n"
-        f"Task instruction:\n{instruction.strip()}\n"
-        "Choose the last A* action for the current state. "
-        "Allowed actions: forward, left, right, rotl, rotr, ascend, descend, stop.\n"
-        "Return only the action name."
-    )
+    return build_qwen3vl_action_user_prompt(instruction)
 
 
 def _read_frame(cap: cv2.VideoCapture, frame_index: int, video_path: Path, strip_overlay: bool) -> Any:
@@ -187,7 +192,7 @@ def export_dataset(args: argparse.Namespace) -> dict[str, Any]:
                     action_index = frame_index
                     action_row = frame_row
                 action = str(action_row.get("action", "")).strip()
-                if action not in VALID_ACTIONS:
+                if action not in UAVON_VALID_ACTIONS:
                     continue
 
                 rel_image_path = Path("images") / episode_dir.name / f"{frame_index:06d}.jpg"
@@ -251,7 +256,8 @@ def export_dataset(args: argparse.Namespace) -> dict[str, Any]:
         "jsonl_path": str(jsonl_path),
         "num_rows": len(rows),
         "num_trajectories": len(used_by_episode),
-        "actions": {action: sum(1 for row in rows if row["action"] == action) for action in sorted(VALID_ACTIONS)},
+        "actions": {action: sum(1 for row in rows if row["action"] == action) for action in UAVON_ACTIONS},
+        "action_prompt_version": UAVON_ACTION_PROMPT_VERSION,
         "mean_prompt_chars": mean(len(row["messages"][1]["content"][1]["text"]) for row in rows),
         "target_alignment": args.target_alignment,
         "frame_stride": args.frame_stride,

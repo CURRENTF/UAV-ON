@@ -37,7 +37,37 @@ The full pipeline passes these settings to LightningVLN:
 - `MAX_STEPS=1000`
 - `SAVE_STEPS=200`
 - `SAVE_TOTAL_LIMIT=5`
-- `REPORT_TO=none` by default
+- `REPORT_TO=wandb` by default; set `REPORT_TO=none` explicitly to disable it
+
+## Action Schema
+
+Qwen3-VL action prompts and parsers now use prompt/schema version
+`qwen3vl_action_v1`.
+
+The nominal UAV-ON action set is:
+
+- `forward`
+- `left`
+- `right`
+- `rotl`
+- `rotr`
+- `ascend`
+- `descend`
+- `stop`
+
+The current A* oracle can execute in the UAV-ON environment but emits labels by
+rotating toward a direction and then moving forward. Its label set is therefore:
+
+- `forward`
+- `rotl`
+- `rotr`
+- `ascend`
+- `descend`
+- `stop`
+
+`left` and `right` are valid executable actions and remain in the model-facing
+allowed action list, but they are not present in the current A* SFT labels unless
+the data generator or oracle is changed.
 
 ## Data Rebalancing
 
