@@ -277,6 +277,12 @@ The run started on 2026-05-12 used:
 /root/autodl-fs/logs/qwen3vl_front_rgb_bs16_lr1e-5_2k_full_valset_1000_max40_20260512_190107
 ```
 
+Important: this eval was launched before action step sizes were centralized.
+Its raw outputs show the legacy eval defaults (`forward=5`, `ascend/descend=2`,
+`rotl/rotr=15`). Treat its closed-loop score as an invalid configuration for
+front-RGB 3m/90deg action checkpoints, whose training rows use
+`forward/ascend/descend=3.0` and mostly `rotl/rotr=90.0`.
+
 ## Trajectory-Mode Qwen3-VL Eval
 
 Observed on 2026-05-13: trajectory-mode Qwen3-VL checkpoints trained by
@@ -299,10 +305,25 @@ The UAV-ON eval wrapper supports this with
 `--qwen3vl_eval_sample_mode trajectory`. At each closed-loop step it sends the
 latest ordered observation window, capped by `--qwen3vl_trajectory_max_steps`,
 using the same prompt shape as training: one action name per line, in the same
-order as observations. Eval selects the last parsed action, corresponding to
-the current observation, and logs `parsed_actions`, `parsed_action_count`,
-`trajectory_num_steps`, and `trajectory_source_steps` in
-`qwen3vl_action_raw_outputs.jsonl`.
+order as observations. Eval deduplicates overlapping simulator observation
+windows before building the model trajectory, selects the parsed action offset
+that corresponds to the current deduplicated observation, and logs
+`trajectory_raw_source_steps`, `trajectory_source_steps`, `parsed_actions`,
+`parsed_action_count`, and `selected_action_offset` in
+`qwen3vl_action_raw_outputs.jsonl`. A healthy traj32 eval should show source
+steps growing like `[0]`, `[0, 1]`, `[0, 1, 2]`, not
+`[0]`, `[0, 0, 1]`, `[0, 0, 1, 0, 1, 2]` as the model input.
+
+For front-RGB 3m datasets, closed-loop eval must use action step sizes that
+match the training labels:
+
+- `UAV_ON_XOY_STEP_SIZE=3`
+- `UAV_ON_Z_STEP_SIZE=3`
+- `UAV_ON_ROTATE_ANGLE=90`
+
+Runs before 2026-05-14 often used legacy defaults (`5/2/15`) because the model
+outputs only action names, not step sizes. Those scores are not comparable to
+proper 3m/90deg evals.
 
 Set `QWEN3VL_TRAJECTORY_KV_CACHE=true` to reuse the prompt KV cache while the
 trajectory window grows by appending one new observation. When the window slides
@@ -329,6 +350,9 @@ QWEN3VL_TRAJECTORY_MAX_STEPS=32 \
 QWEN3VL_TRAJECTORY_KV_CACHE=true \
 QWEN3VL_MAX_NEW_TOKENS=128 \
 UAV_ON_MAX_ACTIONS=40 \
+UAV_ON_XOY_STEP_SIZE=3 \
+UAV_ON_Z_STEP_SIZE=3 \
+UAV_ON_ROTATE_ANGLE=90 \
 UAV_ON_SCENE_BOOT_SECONDS=300 \
 setsid bash scripts/eval_qwen3vl_front_rgb_full_valset.sh \
   >/root/autodl-fs/logs/qwen3vl_front_rgb_fullft_traj32_launcher.log 2>&1 < /dev/null &
