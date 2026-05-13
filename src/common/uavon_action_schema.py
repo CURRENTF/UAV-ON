@@ -30,6 +30,7 @@ UAVON_ASTAR_LABEL_ACTIONS: Final[tuple[str, ...]] = (
 )
 
 QWEN3VL_ACTION_SYSTEM_PROMPT: Final[str] = "You are a UAV navigation policy. Return only one action name."
+QWEN3VL_TRAJECTORY_ACTION_SYSTEM_PROMPT: Final[str] = "You are a UAV navigation policy. Return only action names."
 QWEN3VL_ACTION_OUTPUT_FORMAT: Final[str] = "Return only the action name."
 QWEN3VL_ACTION_CHOICE_INSTRUCTION: Final[str] = "Choose the A* action for the current state."
 QWEN3VL_ALLOWED_ACTIONS_TEXT: Final[str] = ", ".join(UAVON_ACTIONS)
@@ -64,9 +65,36 @@ def build_qwen3vl_action_user_prompt(instruction: str, *, view_mode: str = "four
     )
 
 
+def build_qwen3vl_trajectory_action_user_prompt(instruction: str, *, num_steps: int, view_mode: str = "front_rgb") -> str:
+    if num_steps <= 0:
+        raise ValueError(f"num_steps must be positive, got {num_steps}")
+    if view_mode == "front_rgb":
+        observation_text = "You are given an ordered UAV trajectory of front camera RGB observations."
+    elif view_mode == "four_view":
+        observation_text = "You are given an ordered UAV trajectory of four-view 2x2 RGB image-grid observations."
+    else:
+        raise ValueError(f"Unsupported UAV-ON trajectory action prompt view_mode: {view_mode}")
+    return (
+        f"{observation_text}\n"
+        f"Task instruction:\n{instruction.strip()}\n"
+        f"Number of steps: {num_steps}.\n"
+        "For each observation, choose the A* action for that state.\n"
+        f"Allowed actions: {QWEN3VL_ALLOWED_ACTIONS_TEXT}.\n"
+        "Return exactly one action name per line, in the same order as the observations."
+    )
+
+
 def extract_uavon_action(text: str) -> tuple[str, float | None] | None:
     match = _ACTION_PATTERN.search(text)
     if match is None:
         return None
     step_size = float(match.group(2)) if match.group(2) is not None else None
     return match.group(1), step_size
+
+
+def extract_uavon_actions(text: str) -> list[tuple[str, float | None]]:
+    actions: list[tuple[str, float | None]] = []
+    for match in _ACTION_PATTERN.finditer(text):
+        step_size = float(match.group(2)) if match.group(2) is not None else None
+        actions.append((match.group(1), step_size))
+    return actions

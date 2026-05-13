@@ -91,6 +91,10 @@ if __name__ == "__main__":
                 "batch_size": args.batchSize,
                 "is_fixed": args.is_fixed,
                 "simulator_tool_port": args.simulator_tool_port,
+                "qwen3vl_eval_sample_mode": args.qwen3vl_eval_sample_mode,
+                "qwen3vl_trajectory_max_steps": args.qwen3vl_trajectory_max_steps,
+                "qwen3vl_trajectory_kv_cache": args.qwen3vl_trajectory_kv_cache,
+                "qwen3vl_max_new_tokens": args.qwen3vl_max_new_tokens,
             }
         },
     )

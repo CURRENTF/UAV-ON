@@ -276,3 +276,60 @@ The run started on 2026-05-12 used:
 /root/autodl-fs/evals/qwen3vl_front_rgb_bs16_lr1e-5_2k_full_valset_1000_max40_20260512_190107
 /root/autodl-fs/logs/qwen3vl_front_rgb_bs16_lr1e-5_2k_full_valset_1000_max40_20260512_190107
 ```
+
+## Trajectory-Mode Qwen3-VL Eval
+
+Observed on 2026-05-13: trajectory-mode Qwen3-VL checkpoints trained by
+LightningVLN use `sample_mode=trajectory` with multiple ordered front RGB
+observations in one prompt. For the local traj32 full-finetune checkpoint:
+
+```text
+/root/autodl-fs/checkpoints/uavon_qwen3vl_action_front_rgb_3m_20k_fullft_traj32_bs1_lr1e-5_linear_2k_workers4
+```
+
+`launch_config.json` records:
+
+- `sample_mode=trajectory`
+- `trajectory_max_steps=32`
+- `trajectory_stride=32`
+- `trajectory_min_steps=2`
+- `peft_method=none`
+
+The UAV-ON eval wrapper supports this with
+`--qwen3vl_eval_sample_mode trajectory`. At each closed-loop step it sends the
+latest ordered observation window, capped by `--qwen3vl_trajectory_max_steps`,
+using the same prompt shape as training: one action name per line, in the same
+order as observations. Eval selects the last parsed action, corresponding to
+the current observation, and logs `parsed_actions`, `parsed_action_count`,
+`trajectory_num_steps`, and `trajectory_source_steps` in
+`qwen3vl_action_raw_outputs.jsonl`.
+
+Set `QWEN3VL_TRAJECTORY_KV_CACHE=true` to reuse the prompt KV cache while the
+trajectory window grows by appending one new observation. When the window slides
+or a new task starts, eval rebuilds the prompt cache to avoid reusing KV entries
+for different images. Raw outputs record `kv_cache_enabled`, `kv_cache_hit`,
+`kv_cache_lcp_tokens`, `kv_cache_prompt_tokens`, and
+`kv_cache_reset_reason`.
+
+Reusable full-valset runner:
+
+```text
+scripts/eval_qwen3vl_front_rgb_full_valset.sh
+```
+
+Example command for the traj32 full-finetune checkpoint:
+
+```bash
+cd /root/autodl-tmp/UAV-ON
+RUN_ID=qwen3vl_front_rgb_fullft_traj32_bs1_lr1e-5_2k_full_valset_1000_max40_$(date +%Y%m%d_%H%M%S) \
+QWEN3VL_MODEL_PATH=/root/autodl-fs/checkpoints/uavon_qwen3vl_action_front_rgb_3m_20k_fullft_traj32_bs1_lr1e-5_linear_2k_workers4 \
+QWEN3VL_ADAPTER_PATH= \
+QWEN3VL_EVAL_SAMPLE_MODE=trajectory \
+QWEN3VL_TRAJECTORY_MAX_STEPS=32 \
+QWEN3VL_TRAJECTORY_KV_CACHE=true \
+QWEN3VL_MAX_NEW_TOKENS=128 \
+UAV_ON_MAX_ACTIONS=40 \
+UAV_ON_SCENE_BOOT_SECONDS=300 \
+setsid bash scripts/eval_qwen3vl_front_rgb_full_valset.sh \
+  >/root/autodl-fs/logs/qwen3vl_front_rgb_fullft_traj32_launcher.log 2>&1 < /dev/null &
+```
