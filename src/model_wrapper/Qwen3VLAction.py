@@ -168,11 +168,37 @@ class Qwen3VLAction(BaseModelWrapper):
     def _select_trajectory_observations(self, episode: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not episode:
             raise ValueError("Expected at least one observation in episode")
-        if self.trajectory_max_steps <= 0 or len(episode) <= self.trajectory_max_steps:
-            return list(episode)
-        return list(episode[-self.trajectory_max_steps :])
+        observations = self._dedupe_trajectory_observations(episode)
+        if self.trajectory_max_steps <= 0 or len(observations) <= self.trajectory_max_steps:
+            return observations
+        return observations[-self.trajectory_max_steps :]
+
+    def _dedupe_trajectory_observations(self, episode: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        observations: list[dict[str, Any]] = []
+        seen: set[tuple[Any, ...]] = set()
+        for index, observation in enumerate(episode):
+            key = self._trajectory_observation_key(observation, index)
+            if key in seen:
+                continue
+            seen.add(key)
+            observations.append(observation)
+        return observations
+
+    def _trajectory_observation_key(self, observation: dict[str, Any], index: int) -> tuple[Any, ...]:
+        state = observation.get("sensors", {}).get("state", {})
+        position = state.get("position")
+        quaternion = state.get("quaternionr")
+        step = observation.get("step", None)
+        if position is None or quaternion is None:
+            return ("fallback", step, index)
+
+        def normalize(values: Any) -> tuple[float, ...]:
+            return tuple(round(float(value), 6) for value in values)
+
+        return ("pose", step, normalize(position), normalize(quaternion))
 
     def _prepare_trajectory_input(self, episode: list[dict[str, Any]]) -> dict[str, Any]:
+        raw_source_steps = [observation.get("step", -1) for observation in episode]
         observations = self._select_trajectory_observations(episode)
         current = observations[-1]
         images = [self._observation_image(observation["rgb"]) for observation in observations]
@@ -181,6 +207,8 @@ class Qwen3VLAction(BaseModelWrapper):
             "images": images,
             "instruction": instruction,
             "step": current.get("step", -1),
+            "trajectory_raw_num_steps": len(episode),
+            "trajectory_raw_source_steps": raw_source_steps,
             "trajectory_num_steps": len(observations),
             "trajectory_source_steps": [observation.get("step", -1) for observation in observations],
         }
@@ -495,6 +523,8 @@ class Qwen3VLAction(BaseModelWrapper):
                 parsed = None
             detail = {
                 "raw_text": raw_text,
+                "trajectory_raw_num_steps": item.get("trajectory_raw_num_steps", 0),
+                "trajectory_raw_source_steps": item.get("trajectory_raw_source_steps", []),
                 "trajectory_num_steps": item.get("trajectory_num_steps", 0),
                 "trajectory_source_steps": item.get("trajectory_source_steps", []),
                 "parsed_actions": [action for action, _step_size in parsed_actions],
