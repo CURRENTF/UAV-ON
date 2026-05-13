@@ -6,6 +6,7 @@ from typing import Final
 UAVON_ACTION_PROMPT_VERSION: Final[str] = "qwen3vl_action_v1"
 UAVON_FRONT_RGB_ACTION_PROMPT_VERSION: Final[str] = "qwen3vl_action_v1_front_rgb"
 UAVON_FOUR_VIEW_IMAGES_ACTION_PROMPT_VERSION: Final[str] = "qwen3vl_action_v1_four_view_images"
+UAVON_TRAJECTORY_ACTION_PROMPT_VERSION: Final[str] = "qwen3vl_action_v1_trajectory"
 
 UAVON_ACTIONS: Final[tuple[str, ...]] = (
     "forward",

@@ -314,6 +314,19 @@ that corresponds to the current deduplicated observation, and logs
 steps growing like `[0]`, `[0, 1]`, `[0, 1, 2]`, not
 `[0]`, `[0, 0, 1]`, `[0, 0, 1, 0, 1, 2]` as the model input.
 
+Observed on 2026-05-14: the historical traj32 checkpoint above was trained
+before LightningVLN had prefix trajectory sampling. Its training samples were
+32-step chunks, so early labels could attend to future observations that are
+not available in closed-loop eval. Treat its low loss and score as not-clean
+closed-loop evidence until retrained with `TRAJECTORY_SAMPLE_STRATEGY=prefixes`
+in LightningVLN.
+
+Trajectory parsing should remain strict. If the model emits fewer action names
+than the current deduplicated prefix length, the wrapper records
+`parse_failed`, logs `required_action_count` and `parse_error`, and executes the
+fallback `stop` action. It should not silently select the last available action
+for a later state.
+
 For front-RGB 3m datasets, closed-loop eval must use action step sizes that
 match the training labels:
 
@@ -321,9 +334,13 @@ match the training labels:
 - `UAV_ON_Z_STEP_SIZE=3`
 - `UAV_ON_ROTATE_ANGLE=90`
 
-Runs before 2026-05-14 often used legacy defaults (`5/2/15`) because the model
-outputs only action names, not step sizes. Those scores are not comparable to
-proper 3m/90deg evals.
+`scripts/eval_qwen3vl_front_rgb_full_valset.sh` now defaults to `3/3/90`
+because it is specific to the front-RGB 3m eval flow. The lower-level generic
+`scripts/eval_qwen3vl_action.sh` still exposes explicit step-size arguments,
+so record resolved values from `runtime_config.json` for every run. Runs before
+2026-05-14 often used legacy defaults (`5/2/15`) because the model outputs only
+action names, not step sizes. Those scores are not comparable to proper
+3m/90deg evals.
 
 Set `QWEN3VL_TRAJECTORY_KV_CACHE=true` to reuse the prompt KV cache while the
 trajectory window grows by appending one new observation. When the window slides
@@ -331,6 +348,11 @@ or a new task starts, eval rebuilds the prompt cache to avoid reusing KV entries
 for different images. Raw outputs record `kv_cache_enabled`, `kv_cache_hit`,
 `kv_cache_lcp_tokens`, `kv_cache_prompt_tokens`, and
 `kv_cache_reset_reason`.
+
+Trajectory eval must set `QWEN3VL_MAX_NEW_TOKENS` high enough to emit one action
+name for each observation in the prefix. The front-RGB full-valset runner
+defaults to 128 tokens for trajectory mode; the wrapper raises an error if
+`qwen3vl_max_new_tokens < qwen3vl_trajectory_max_steps`.
 
 Reusable full-valset runner:
 

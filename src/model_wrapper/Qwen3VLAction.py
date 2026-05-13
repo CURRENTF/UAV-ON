@@ -56,6 +56,16 @@ class Qwen3VLAction(BaseModelWrapper):
             raise ValueError(f"Unsupported qwen3vl_eval_sample_mode: {self.sample_mode}")
         if self.trajectory_max_steps < 0:
             raise ValueError("--qwen3vl_trajectory_max_steps must be >= 0")
+        if (
+            self.sample_mode == "trajectory"
+            and self.trajectory_max_steps > 0
+            and self.max_new_tokens < self.trajectory_max_steps
+        ):
+            raise ValueError(
+                "Trajectory eval requires qwen3vl_max_new_tokens to be at least "
+                f"qwen3vl_trajectory_max_steps; got max_new_tokens={self.max_new_tokens}, "
+                f"trajectory_max_steps={self.trajectory_max_steps}"
+            )
         self.processor, self.model = self._load_model()
         self._trajectory_cache_by_batch: dict[int, dict[str, Any]] = {}
         self.raw_log_path = Path(args.eval_save_path) / "qwen3vl_action_raw_outputs.jsonl"
@@ -515,12 +525,14 @@ class Qwen3VLAction(BaseModelWrapper):
                 cache_detail = {"kv_cache_enabled": False}
             parsed_actions = extract_uavon_actions(raw_text)
             selected_action_offset = None
-            if parsed_actions:
-                trajectory_num_steps = int(item.get("trajectory_num_steps", 0))
-                selected_action_offset = min(len(parsed_actions), max(trajectory_num_steps, 1)) - 1
+            parse_error = None
+            required_action_count = max(int(item.get("trajectory_num_steps", 0)), 1)
+            if len(parsed_actions) >= required_action_count:
+                selected_action_offset = required_action_count - 1
                 parsed = parsed_actions[selected_action_offset]
             else:
                 parsed = None
+                parse_error = f"expected at least {required_action_count} actions, got {len(parsed_actions)}"
             detail = {
                 "raw_text": raw_text,
                 "trajectory_raw_num_steps": item.get("trajectory_raw_num_steps", 0),
@@ -529,7 +541,9 @@ class Qwen3VLAction(BaseModelWrapper):
                 "trajectory_source_steps": item.get("trajectory_source_steps", []),
                 "parsed_actions": [action for action, _step_size in parsed_actions],
                 "parsed_action_count": len(parsed_actions),
+                "required_action_count": required_action_count,
                 "selected_action_offset": selected_action_offset,
+                "parse_error": parse_error,
                 **cache_detail,
             }
             return raw_text, parsed, detail
