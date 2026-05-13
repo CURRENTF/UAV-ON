@@ -428,7 +428,11 @@ class Qwen3VLAction(BaseModelWrapper):
 
         if cache_state is not None:
             previous_steps = list(cache_state.get("source_steps", []))
-            can_append = bool(previous_steps) and source_steps[: len(previous_steps)] == previous_steps
+            can_append = (
+                bool(previous_steps)
+                and len(source_steps) > len(previous_steps)
+                and source_steps[: len(previous_steps)] == previous_steps
+            )
             if can_append:
                 lcp_len = self._longest_common_prefix(cache_state["input_ids"], current_ids)
                 if "mm_token_type_ids" in inputs:
@@ -482,14 +486,20 @@ class Qwen3VLAction(BaseModelWrapper):
                 raw_text = self._generate_trajectory(item["images"], item["instruction"])
                 cache_detail = {"kv_cache_enabled": False}
             parsed_actions = extract_uavon_actions(raw_text)
-            parsed = parsed_actions[-1] if parsed_actions else None
+            selected_action_offset = None
+            if parsed_actions:
+                trajectory_num_steps = int(item.get("trajectory_num_steps", 0))
+                selected_action_offset = min(len(parsed_actions), max(trajectory_num_steps, 1)) - 1
+                parsed = parsed_actions[selected_action_offset]
+            else:
+                parsed = None
             detail = {
                 "raw_text": raw_text,
                 "trajectory_num_steps": item.get("trajectory_num_steps", 0),
                 "trajectory_source_steps": item.get("trajectory_source_steps", []),
                 "parsed_actions": [action for action, _step_size in parsed_actions],
                 "parsed_action_count": len(parsed_actions),
-                "selected_action_offset": len(parsed_actions) - 1 if parsed_actions else None,
+                "selected_action_offset": selected_action_offset,
                 **cache_detail,
             }
             return raw_text, parsed, detail
