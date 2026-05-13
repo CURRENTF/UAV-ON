@@ -43,6 +43,9 @@ class UavOnRuntimeConfig:
     inline_vector_env: bool = False
     vector_env_start_method: str = "forkserver"
     kinematic_actions: bool = False
+    xOy_step_size: float = 5.0
+    z_step_size: float = 2.0
+    rotateAngle: float = 15.0
     scene_boot_seconds: float = 0.2
     action_timeout_seconds: float = 12.0
     verbose_pose: bool = False
@@ -60,6 +63,9 @@ class UavOnRuntimeConfig:
             inline_vector_env=env_bool("UAV_ON_INLINE_VECTOR_ENV", False),
             vector_env_start_method=env_str("UAV_ON_VECTOR_ENV_START_METHOD", "forkserver"),
             kinematic_actions=env_bool("UAV_ON_KINEMATIC_ACTIONS", False),
+            xOy_step_size=env_float("UAV_ON_XOY_STEP_SIZE", 5.0),
+            z_step_size=env_float("UAV_ON_Z_STEP_SIZE", 2.0),
+            rotateAngle=env_float("UAV_ON_ROTATE_ANGLE", 15.0),
             scene_boot_seconds=env_float("UAV_ON_SCENE_BOOT_SECONDS", scene_boot_seconds_default),
             action_timeout_seconds=env_float("UAV_ON_ACTION_TIMEOUT_SECONDS", 12.0),
             verbose_pose=env_bool("UAV_ON_VERBOSE_POSE", False),
@@ -78,6 +84,9 @@ class UavOnRuntimeConfig:
             "inline_vector_env": "UAV_ON_INLINE_VECTOR_ENV" in os.environ,
             "vector_env_start_method": "UAV_ON_VECTOR_ENV_START_METHOD" in os.environ,
             "kinematic_actions": "UAV_ON_KINEMATIC_ACTIONS" in os.environ,
+            "xOy_step_size": "UAV_ON_XOY_STEP_SIZE" in os.environ,
+            "z_step_size": "UAV_ON_Z_STEP_SIZE" in os.environ,
+            "rotateAngle": "UAV_ON_ROTATE_ANGLE" in os.environ,
             "scene_boot_seconds": "UAV_ON_SCENE_BOOT_SECONDS" in os.environ,
             "action_timeout_seconds": "UAV_ON_ACTION_TIMEOUT_SECONDS" in os.environ,
             "verbose_pose": "UAV_ON_VERBOSE_POSE" in os.environ,
@@ -93,6 +102,9 @@ class UavOnRuntimeConfig:
             "inline_vector_env": "UAV_ON_INLINE_VECTOR_ENV",
             "vector_env_start_method": "UAV_ON_VECTOR_ENV_START_METHOD",
             "kinematic_actions": "UAV_ON_KINEMATIC_ACTIONS",
+            "xOy_step_size": "UAV_ON_XOY_STEP_SIZE",
+            "z_step_size": "UAV_ON_Z_STEP_SIZE",
+            "rotateAngle": "UAV_ON_ROTATE_ANGLE",
             "scene_boot_seconds": "UAV_ON_SCENE_BOOT_SECONDS",
             "action_timeout_seconds": "UAV_ON_ACTION_TIMEOUT_SECONDS",
             "verbose_pose": "UAV_ON_VERBOSE_POSE",
@@ -111,6 +123,9 @@ class UavOnRuntimeConfig:
             "UAV_ON_INLINE_VECTOR_ENV": _bool_env(self.inline_vector_env),
             "UAV_ON_VECTOR_ENV_START_METHOD": self.vector_env_start_method,
             "UAV_ON_KINEMATIC_ACTIONS": _bool_env(self.kinematic_actions),
+            "UAV_ON_XOY_STEP_SIZE": str(self.xOy_step_size),
+            "UAV_ON_Z_STEP_SIZE": str(self.z_step_size),
+            "UAV_ON_ROTATE_ANGLE": str(self.rotateAngle),
             "UAV_ON_SCENE_BOOT_SECONDS": str(self.scene_boot_seconds),
             "UAV_ON_ACTION_TIMEOUT_SECONDS": str(self.action_timeout_seconds),
             "UAV_ON_VERBOSE_POSE": _bool_env(self.verbose_pose),

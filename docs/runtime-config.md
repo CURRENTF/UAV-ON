@@ -16,6 +16,9 @@ These variables are read through `UavOnRuntimeConfig`:
 - `UAV_ON_INLINE_VECTOR_ENV`: use the in-process vector env formatter.
 - `UAV_ON_VECTOR_ENV_START_METHOD`: multiprocessing start method for vector env workers.
 - `UAV_ON_KINEMATIC_ACTIONS`: use `simSetVehiclePose` instead of AirSim async movement.
+- `UAV_ON_XOY_STEP_SIZE`: default horizontal movement distance for action-only policies.
+- `UAV_ON_Z_STEP_SIZE`: default vertical movement distance for action-only policies.
+- `UAV_ON_ROTATE_ANGLE`: default yaw rotation angle for action-only policies.
 - `UAV_ON_SCENE_BOOT_SECONDS`: scene boot wait after opening Unreal scenes.
 - `UAV_ON_ACTION_TIMEOUT_SECONDS`: AirSim movement/rotation timeout.
 - `UAV_ON_VERBOSE_POSE`: print pose-setting diagnostics.
