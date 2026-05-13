@@ -53,6 +53,8 @@ custom_parser.add_argument("--scene_balance_mode", default="dataset_order")
 custom_parser.add_argument("--target_total_samples", type=int, default=0)
 custom_parser.add_argument("--target_samples_per_scene", type=int, default=0)
 custom_parser.add_argument("--complete_trajectories", type=_str2bool, default=False)
+custom_parser.add_argument("--reset_retry_attempts", type=int, default=3)
+custom_parser.add_argument("--reset_retry_sleep_seconds", type=float, default=15.0)
 custom_parser.add_argument("--overwrite", action="store_true")
 custom_parser.add_argument("--status_every", type=int, default=100)
 custom_args, remaining_argv = custom_parser.parse_known_args()
@@ -307,6 +309,10 @@ def _new_stats(output_dir: Path, jsonl_path: Path) -> dict[str, Any]:
         "max_actions": args.maxActions,
         "simulator_tool_port": args.simulator_tool_port,
         "gpu_id": args.gpu_id,
+        "reset_retry": {
+            "attempts": int(custom_args.reset_retry_attempts),
+            "sleep_seconds": float(custom_args.reset_retry_sleep_seconds),
+        },
         "performance": {
             "rgb_only": CUSTOM_RUNTIME_CONFIG.rgb_only,
             "front_view_only": CUSTOM_RUNTIME_CONFIG.front_view_only,
@@ -390,11 +396,74 @@ def _rebuild_progress_from_jsonl(
     return num_rows, action_counts, scene_counts, episodes_with_samples, completed_episodes, bad_lines
 
 
+def _reset_scene_reuse_state(env: Any) -> None:
+    if hasattr(env, "last_using_map_list"):
+        env.last_using_map_list = []
+    if hasattr(env, "this_scene_used_cnt"):
+        env.this_scene_used_cnt = 0
+
+
+def _close_env_scenes_for_retry(env: Any) -> None:
+    try:
+        if hasattr(env, "simulator_tool"):
+            env.simulator_tool.closeScenes()
+    except Exception as exc:
+        print(f"[generate] reset retry closeScenes failed: {exc}", flush=True)
+    _reset_scene_reuse_state(env)
+
+
+def _reset_with_retries(env: Any, stats: dict[str, Any], stats_path: Path) -> Any:
+    attempts = max(1, int(custom_args.reset_retry_attempts))
+    sleep_seconds = max(0.0, float(custom_args.reset_retry_sleep_seconds))
+    last_exc: Exception | None = None
+
+    for attempt in range(1, attempts + 1):
+        stage_start = time.time()
+        try:
+            outputs = env.reset()
+        except Exception as exc:
+            last_exc = exc
+            _add_timing(stats, "env_reset", time.time() - stage_start)
+            retry_info = {
+                "attempt": attempt,
+                "max_attempts": attempts,
+                "error": repr(exc),
+                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            stats.setdefault("reset_retry_failures", []).append(retry_info)
+            stats["num_reset_retry_failures"] = int(stats.get("num_reset_retry_failures", 0)) + 1
+            _write_stats(stats_path, stats)
+            print(
+                f"[generate] env.reset failed attempt={attempt}/{attempts}: {exc!r}",
+                flush=True,
+            )
+            if attempt >= attempts:
+                break
+            _close_env_scenes_for_retry(env)
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+            continue
+
+        _add_timing(stats, "env_reset", time.time() - stage_start)
+        if attempt > 1:
+            stats["num_reset_retry_successes"] = int(stats.get("num_reset_retry_successes", 0)) + 1
+            _write_stats(stats_path, stats)
+            print(f"[generate] env.reset recovered on attempt={attempt}/{attempts}", flush=True)
+        return outputs
+
+    _close_env_scenes_for_retry(env)
+    raise RuntimeError(f"env.reset failed after {attempts} attempts") from last_exc
+
+
 def main() -> None:
     if args.is_fixed:
         raise RuntimeError("A* data generation requires --is_fixed false.")
     if custom_args.max_samples <= 0:
         raise ValueError("--max_samples must be positive")
+    if custom_args.reset_retry_attempts <= 0:
+        raise ValueError("--reset_retry_attempts must be positive")
+    if custom_args.reset_retry_sleep_seconds < 0:
+        raise ValueError("--reset_retry_sleep_seconds must be >= 0")
     if custom_args.separate_view_images and CUSTOM_RUNTIME_CONFIG.front_view_only:
         raise ValueError("--separate_view_images requires --front_view_only false")
 
@@ -541,9 +610,7 @@ def main() -> None:
 
                 stats["num_batches"] += 1
                 stats["num_episodes_started"] += len(env_batch)
-                stage_start = time.time()
-                outputs = env.reset()
-                _add_timing(stats, "env_reset", time.time() - stage_start)
+                outputs = _reset_with_retries(env, stats, stats_path)
                 observations, env_dones, collisions, _oracle_success = [list(x) for x in zip(*outputs)]
                 stage_start = time.time()
                 oracle.prepare_batch(env=env, batch=env_batch)

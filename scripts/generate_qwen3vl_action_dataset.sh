@@ -27,6 +27,8 @@ extra_args=()
 [[ -n "${UAV_ON_COLLECTION_TARGET_TOTAL_SAMPLES+x}" ]] && extra_args+=(--target_total_samples "$UAV_ON_COLLECTION_TARGET_TOTAL_SAMPLES")
 [[ -n "${UAV_ON_COLLECTION_TARGET_SAMPLES_PER_SCENE+x}" ]] && extra_args+=(--target_samples_per_scene "$UAV_ON_COLLECTION_TARGET_SAMPLES_PER_SCENE")
 [[ -n "${UAV_ON_GENERATE_COMPLETE_TRAJECTORIES+x}" ]] && extra_args+=(--complete_trajectories "$UAV_ON_GENERATE_COMPLETE_TRAJECTORIES")
+[[ -n "${UAV_ON_RESET_RETRY_ATTEMPTS+x}" ]] && extra_args+=(--reset_retry_attempts "$UAV_ON_RESET_RETRY_ATTEMPTS")
+[[ -n "${UAV_ON_RESET_RETRY_SLEEP_SECONDS+x}" ]] && extra_args+=(--reset_retry_sleep_seconds "$UAV_ON_RESET_RETRY_SLEEP_SECONDS")
 
 CUDA_VISIBLE_DEVICES="$cuda_visible_devices" "$python_bin" -u "$root_dir/scripts/generate_qwen3vl_action_dataset_online.py" \
     --output_dir "$output_dir" \

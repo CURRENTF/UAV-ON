@@ -17,6 +17,7 @@ from common.uavon_action_schema import (
     build_qwen3vl_action_user_prompt,
     extract_uavon_action,
 )
+from common.runtime_config import runtime_config_from_env
 from model_wrapper.base_model import BaseModelWrapper
 from src.common.param import args
 
@@ -43,6 +44,8 @@ class Qwen3VLAction(BaseModelWrapper):
         self.model_path = args.qwen3vl_model_path
         self.adapter_path = _latest_checkpoint(args.qwen3vl_adapter_path) if args.qwen3vl_adapter_path else ""
         self.max_new_tokens = int(args.qwen3vl_max_new_tokens)
+        self.runtime_config = runtime_config_from_env()
+        self.view_mode = "front_rgb" if self.runtime_config.front_view_only else "four_view"
         self.processor, self.model = self._load_model()
         self.raw_log_path = Path(args.eval_save_path) / "qwen3vl_action_raw_outputs.jsonl"
         self.raw_log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -102,6 +105,13 @@ class Qwen3VLAction(BaseModelWrapper):
         grid.paste(tiles[3], (tile_size, tile_size))
         return grid
 
+    def _observation_image(self, images: list[Any]) -> Image.Image:
+        if self.view_mode == "front_rgb":
+            if len(images) != 1:
+                raise ValueError(f"Expected one front UAV-ON RGB image, got {len(images)}")
+            return self._image_from_obs(images[0])
+        return self._make_fourview_grid(images)
+
     def _task_instruction(self, observation: dict[str, Any]) -> str:
         target_name = str(observation.get("object_name") or "target object").strip()
         size = str(observation.get("object_size") or "").strip()
@@ -120,7 +130,7 @@ class Qwen3VLAction(BaseModelWrapper):
                 "role": "user",
                 "content": [
                     {"type": "image"},
-                    {"type": "text", "text": build_qwen3vl_action_user_prompt(instruction)},
+                    {"type": "text", "text": build_qwen3vl_action_user_prompt(instruction, view_mode=self.view_mode)},
                 ],
             },
         ]
@@ -130,7 +140,7 @@ class Qwen3VLAction(BaseModelWrapper):
         inputs = []
         for episode in episodes:
             observation = episode[-1]
-            image = self._make_fourview_grid(observation["rgb"])
+            image = self._observation_image(observation["rgb"])
             instruction = self._task_instruction(observation)
             prompts.append(instruction)
             inputs.append({"image": image, "instruction": instruction, "step": observation.get("step", -1)})
@@ -195,6 +205,7 @@ class Qwen3VLAction(BaseModelWrapper):
                         "status": status,
                         "action": action,
                         "step_size": step_size,
+                        "view_mode": self.view_mode,
                         "raw_text": raw_text,
                         "instruction": item.get("instruction", ""),
                     },

@@ -462,6 +462,17 @@ The collection metadata records `view_mode=four_view_images`,
 `front_view_only=false`, `separate_view_images=true`, and
 `image_count_per_sample=4`.
 
+Scene reset/open failures are retried by the generator before the run is
+allowed to fail. The four-view runner defaults to:
+
+- `UAV_ON_RESET_RETRY_ATTEMPTS=4`
+- `UAV_ON_RESET_RETRY_SLEEP_SECONDS=20`
+
+On each failed `env.reset()`, the generator records the error in
+`generation_stats.json` under `reset_retry_failures`, closes currently open
+scenes, clears scene-reuse state, waits, and retries the same batch. If all
+attempts fail, the run still exits explicitly so it can be resumed.
+
 ## A* Turn-Cooldown Variant
 
 Observed on 2026-05-11 in `/root/autodl-tmp/UAV-ON`.

@@ -229,3 +229,50 @@ The 2026-05-11 nonforward80 closed-loop eval was manually stopped before a full
 final report. The partial results seen during the run had no successes among
 completed tasks; completed failures were ending by `step_limit`. Treat that
 run as diagnostic only, not as a final benchmark.
+
+## Full Valset Front-Only Eval
+
+Observed on 2026-05-12: the full official validation metadata contains 1000
+tasks across 14 scenes. When merging the per-scene JSON files from
+`/root/autodl-fs/datasets/UAV-ON-dataset/UAV-ON-data/valset`, make
+`episode_id` unique by prefixing the original id with `map_name`; otherwise
+eval artifact lookup by `episode_id` can pick the wrong task after scenes are
+merged. The local merged full-valset path is:
+
+```text
+/root/autodl-fs/datasets/uavon_qwen3vl_eval_full_valset_1000_unique_ids.json
+```
+
+All test environment zips were unpacked to:
+
+```text
+/root/autodl-fs/datasets/UAV-ON-test-unpacked
+```
+
+Some newly unzipped test scenes had `.sh` launchers and `*Linux-Shipping`
+binaries without execute bits. Fix permissions after unpacking:
+
+```bash
+find /root/autodl-fs/datasets/UAV-ON-test-unpacked -type f \
+  \( -name '*.sh' -o -name '*Linux-Shipping' \) -exec chmod a+rx {} +
+```
+
+Full front-only Qwen3-VL eval launch script:
+
+```text
+scripts/tmp/eval_qwen3vl_front_rgb_bs16_lr1e-5_2k_full_valset_1000_max40.sh
+```
+
+It uses `max_actions=40`, `UAV_ON_FRONT_VIEW_ONLY=1`, `UAV_ON_RGB_ONLY=1`,
+`UAV_ON_KINEMATIC_ACTIONS=1`, and the bs16/lr1e-5/front-rgb DoRA adapter at:
+
+```text
+/root/autodl-fs/checkpoints/uavon_qwen3vl_action_front_rgb_3m_20k_dora_bs16_lr1e-5_linear_2k_workers4
+```
+
+The run started on 2026-05-12 used:
+
+```text
+/root/autodl-fs/evals/qwen3vl_front_rgb_bs16_lr1e-5_2k_full_valset_1000_max40_20260512_190107
+/root/autodl-fs/logs/qwen3vl_front_rgb_bs16_lr1e-5_2k_full_valset_1000_max40_20260512_190107
+```
