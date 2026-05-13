@@ -71,7 +71,7 @@ fi
   echo "[eval] trajectory_kv_cache=$TRAJECTORY_KV_CACHE"
   echo "[eval] max_new_tokens=$MAX_NEW_TOKENS"
   echo "[eval] sim_port=$SIM_PORT"
-  echo "[eval] scene_boot_seconds=$SCENE_BOOT_SECONDS"
+  echo "[eval] scene_ready_timeout_seconds=$SCENE_BOOT_SECONDS"
   nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader || true
 } | tee "$ORCH_LOG"
 
@@ -144,6 +144,7 @@ metadata = {
     "front_view_only": True,
     "sim_port": int("$SIM_PORT"),
     "scene_boot_seconds": float("$SCENE_BOOT_SECONDS"),
+    "scene_ready_timeout_seconds": float("$SCENE_BOOT_SECONDS"),
     "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
     "logs": {
         "orchestrator": "$ORCH_LOG",

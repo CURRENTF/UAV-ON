@@ -111,6 +111,10 @@ The active production settings in `scripts/tmp/resume_generate_20k.sh` are:
 - `UAV_ON_CUDA_VISIBLE_DEVICES=0`
 - `UAV_ON_GPU_ID=0`
 
+`UAV_ON_SCENE_BOOT_SECONDS` is a maximum readiness timeout. Scene startup now
+polls AirSim RPCs and a front RGB image, then proceeds as soon as the scene is
+usable.
+
 ## Verify
 
 Check generated rows and process state:
@@ -183,16 +187,18 @@ In these runs, scene startup dominated small benchmarks (`env_reset` was about
 - `UAV_ON_INLINE_VECTOR_ENV=1`, because the generation path only needs to format `SimState` and does not need separate vector worker processes.
 - `UAV_ON_JPEG_OPTIMIZE=0`, which reduces CPU time spent saving JPEGs.
 
-The `image_settle_seconds=0` and `set_pose_settle_seconds=0` benchmark setting
-is the fastest tested mode, but it is more aggressive. For production data,
-keep the default 0.2-second settle values unless a visual sanity check confirms
-that the rendered frame has updated correctly after each kinematic pose change.
+The current default settle values are `0` seconds. Correctness is enforced by
+polling AirSim state after `simSetVehiclePose` and by checking that returned
+image camera poses match the expected UAV/camera pose. The old fixed delays can
+still be set explicitly when benchmarking a new machine or diagnosing rendering
+lag.
 
 A follow-up CityPark alignment test compared RGB images captured after 0.02
 seconds against the same poses after 0.2 seconds for 20 A* steps and four
 cameras per step. The 0.02-second images did not align with the 0.2-second
-reference (`mean_abs_avg=64.1`, `mean_abs_p95=112.4`, `psnr_avg=10.37dB`), so
-0.02 seconds is not recommended for production data on this machine.
+reference (`mean_abs_avg=64.1`, `mean_abs_p95=112.4`, `psnr_avg=10.37dB`). That
+test predated image pose verification, so it should be treated as evidence that
+short fixed sleeps are unsafe, not that active verification should be disabled.
 
 Recommended conservative 4080 SUPER generation overrides:
 
@@ -207,9 +213,7 @@ bash scripts/generate_qwen3vl_action_dataset.sh \
   --inline_vector_env true
 ```
 
-For a faster benchmark run after visual validation, add explicit settle
-overrides. Do not use the values below for production without re-running the
-alignment check on the target machine:
+For compatibility, explicit settle overrides remain available:
 
 ```bash
   --image_settle_seconds 0 \
@@ -237,9 +241,9 @@ throughput, excluding the first UE scene launch/reset:
 steady_rows_per_second = num_rows / (elapsed_seconds - timings.env_reset.seconds)
 ```
 
-The current best conservative local setting keeps the existing 0.2 second pose
-and image settle delays, uses kinematic A* execution, and changes only the
-collection-side transport/planning overhead:
+The current best local setting uses zero fixed settle delay plus active
+pose/image verification, kinematic A* execution, and collection-side
+transport/planning optimizations:
 
 ```bash
 cd /root/autodl-tmp/UAV-ON-sim-perf

@@ -16,15 +16,28 @@ These variables are read through `UavOnRuntimeConfig`:
 - `UAV_ON_INLINE_VECTOR_ENV`: use the in-process vector env formatter.
 - `UAV_ON_VECTOR_ENV_START_METHOD`: multiprocessing start method for vector env workers.
 - `UAV_ON_KINEMATIC_ACTIONS`: use `simSetVehiclePose` instead of AirSim async movement.
-- `UAV_ON_SCENE_BOOT_SECONDS`: scene boot wait after opening Unreal scenes.
+- `UAV_ON_SCENE_BOOT_SECONDS`: maximum AirSim scene readiness wait after opening
+  Unreal scenes. The client polls AirSim RPCs and a front RGB image instead of
+  sleeping for the whole interval.
 - `UAV_ON_ACTION_TIMEOUT_SECONDS`: AirSim movement/rotation timeout.
 - `UAV_ON_VERBOSE_POSE`: print pose-setting diagnostics.
-- `UAV_ON_SET_POSE_SETTLE_SECONDS`: delay after kinematic pose updates.
+- `UAV_ON_SET_POSE_SETTLE_SECONDS`: optional fixed grace delay after kinematic
+  pose updates. The default is `0`; correctness is checked by pose polling.
+- `UAV_ON_SET_POSE_VERIFY_TIMEOUT_SECONDS`: maximum time to poll
+  `getMultirotorState` after `simSetVehiclePose`.
+- `UAV_ON_SET_POSE_POLL_INTERVAL_SECONDS`: pose verification polling interval.
+- `UAV_ON_SET_POSE_POSITION_TOLERANCE_M`: allowed vehicle position error.
+- `UAV_ON_SET_POSE_ORIENTATION_TOLERANCE_DEG`: allowed vehicle orientation error.
 - `UAV_ON_RGB_ONLY`: skip depth requests when only RGB is needed.
 - `UAV_ON_FRONT_VIEW_ONLY`: request only AirSim camera `0` instead of all four
   UAV-ON cameras.
 - `UAV_ON_RGB_COMPRESS`: request compressed RGB images from AirSim.
-- `UAV_ON_IMAGE_SETTLE_SECONDS`: delay before image capture.
+- `UAV_ON_IMAGE_SETTLE_SECONDS`: optional fixed grace delay before image
+  capture. The default is `0`; correctness is checked by image response polling.
+- `UAV_ON_IMAGE_VERIFY_TIMEOUT_SECONDS`: maximum time to poll `simGetImages`.
+- `UAV_ON_IMAGE_POLL_INTERVAL_SECONDS`: image verification polling interval.
+- `UAV_ON_IMAGE_POSE_TOLERANCE_M`: allowed camera position error.
+- `UAV_ON_IMAGE_ORIENTATION_TOLERANCE_DEG`: allowed camera orientation error.
 - `UAV_ON_JPEG_OPTIMIZE`: enable Pillow JPEG optimization in Qwen3-VL data generation.
 - `UAV_ON_ASTAR_PLAN_CACHE`: enable A* plan cache.
 

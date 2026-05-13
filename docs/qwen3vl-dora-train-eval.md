@@ -333,3 +333,7 @@ UAV_ON_SCENE_BOOT_SECONDS=300 \
 setsid bash scripts/eval_qwen3vl_front_rgb_full_valset.sh \
   >/root/autodl-fs/logs/qwen3vl_front_rgb_fullft_traj32_launcher.log 2>&1 < /dev/null &
 ```
+
+`UAV_ON_SCENE_BOOT_SECONDS` is a readiness timeout for AirSim scene startup, not
+a fixed sleep. The client proceeds once AirSim RPCs and a front RGB image are
+available.

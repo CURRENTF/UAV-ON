@@ -592,7 +592,6 @@ class EventHandler(object):
                     return False, None
                 except:
                     return False, None
-        time.sleep(10)
         self.scene_used_ports += copy.deepcopy(ports)
         
         print("finished", ip)

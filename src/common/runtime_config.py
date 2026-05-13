@@ -46,11 +46,19 @@ class UavOnRuntimeConfig:
     scene_boot_seconds: float = 0.2
     action_timeout_seconds: float = 12.0
     verbose_pose: bool = False
-    set_pose_settle_seconds: float = 0.2
+    set_pose_settle_seconds: float = 0.0
+    set_pose_verify_timeout_seconds: float = 1.0
+    set_pose_poll_interval_seconds: float = 0.02
+    set_pose_position_tolerance_m: float = 0.05
+    set_pose_orientation_tolerance_deg: float = 2.0
     rgb_only: bool = False
     front_view_only: bool = False
     rgb_compress: bool = True
-    image_settle_seconds: float = 0.2
+    image_settle_seconds: float = 0.0
+    image_verify_timeout_seconds: float = 1.0
+    image_poll_interval_seconds: float = 0.02
+    image_pose_tolerance_m: float = 0.25
+    image_orientation_tolerance_deg: float = 5.0
     jpeg_optimize: bool = True
     astar_plan_cache: bool = True
 
@@ -63,11 +71,19 @@ class UavOnRuntimeConfig:
             scene_boot_seconds=env_float("UAV_ON_SCENE_BOOT_SECONDS", scene_boot_seconds_default),
             action_timeout_seconds=env_float("UAV_ON_ACTION_TIMEOUT_SECONDS", 12.0),
             verbose_pose=env_bool("UAV_ON_VERBOSE_POSE", False),
-            set_pose_settle_seconds=env_float("UAV_ON_SET_POSE_SETTLE_SECONDS", 0.2),
+            set_pose_settle_seconds=env_float("UAV_ON_SET_POSE_SETTLE_SECONDS", 0.0),
+            set_pose_verify_timeout_seconds=env_float("UAV_ON_SET_POSE_VERIFY_TIMEOUT_SECONDS", 1.0),
+            set_pose_poll_interval_seconds=env_float("UAV_ON_SET_POSE_POLL_INTERVAL_SECONDS", 0.02),
+            set_pose_position_tolerance_m=env_float("UAV_ON_SET_POSE_POSITION_TOLERANCE_M", 0.05),
+            set_pose_orientation_tolerance_deg=env_float("UAV_ON_SET_POSE_ORIENTATION_TOLERANCE_DEG", 2.0),
             rgb_only=env_bool("UAV_ON_RGB_ONLY", False),
             front_view_only=env_bool("UAV_ON_FRONT_VIEW_ONLY", False),
             rgb_compress=env_bool("UAV_ON_RGB_COMPRESS", True),
-            image_settle_seconds=env_float("UAV_ON_IMAGE_SETTLE_SECONDS", 0.2),
+            image_settle_seconds=env_float("UAV_ON_IMAGE_SETTLE_SECONDS", 0.0),
+            image_verify_timeout_seconds=env_float("UAV_ON_IMAGE_VERIFY_TIMEOUT_SECONDS", 1.0),
+            image_poll_interval_seconds=env_float("UAV_ON_IMAGE_POLL_INTERVAL_SECONDS", 0.02),
+            image_pose_tolerance_m=env_float("UAV_ON_IMAGE_POSE_TOLERANCE_M", 0.25),
+            image_orientation_tolerance_deg=env_float("UAV_ON_IMAGE_ORIENTATION_TOLERANCE_DEG", 5.0),
             jpeg_optimize=env_bool("UAV_ON_JPEG_OPTIMIZE", True),
             astar_plan_cache=env_bool("UAV_ON_ASTAR_PLAN_CACHE", True),
         )
@@ -82,10 +98,18 @@ class UavOnRuntimeConfig:
             "action_timeout_seconds": "UAV_ON_ACTION_TIMEOUT_SECONDS" in os.environ,
             "verbose_pose": "UAV_ON_VERBOSE_POSE" in os.environ,
             "set_pose_settle_seconds": "UAV_ON_SET_POSE_SETTLE_SECONDS" in os.environ,
+            "set_pose_verify_timeout_seconds": "UAV_ON_SET_POSE_VERIFY_TIMEOUT_SECONDS" in os.environ,
+            "set_pose_poll_interval_seconds": "UAV_ON_SET_POSE_POLL_INTERVAL_SECONDS" in os.environ,
+            "set_pose_position_tolerance_m": "UAV_ON_SET_POSE_POSITION_TOLERANCE_M" in os.environ,
+            "set_pose_orientation_tolerance_deg": "UAV_ON_SET_POSE_ORIENTATION_TOLERANCE_DEG" in os.environ,
             "rgb_only": "UAV_ON_RGB_ONLY" in os.environ,
             "front_view_only": "UAV_ON_FRONT_VIEW_ONLY" in os.environ,
             "rgb_compress": "UAV_ON_RGB_COMPRESS" in os.environ,
             "image_settle_seconds": "UAV_ON_IMAGE_SETTLE_SECONDS" in os.environ,
+            "image_verify_timeout_seconds": "UAV_ON_IMAGE_VERIFY_TIMEOUT_SECONDS" in os.environ,
+            "image_poll_interval_seconds": "UAV_ON_IMAGE_POLL_INTERVAL_SECONDS" in os.environ,
+            "image_pose_tolerance_m": "UAV_ON_IMAGE_POSE_TOLERANCE_M" in os.environ,
+            "image_orientation_tolerance_deg": "UAV_ON_IMAGE_ORIENTATION_TOLERANCE_DEG" in os.environ,
             "jpeg_optimize": "UAV_ON_JPEG_OPTIMIZE" in os.environ,
             "astar_plan_cache": "UAV_ON_ASTAR_PLAN_CACHE" in os.environ,
         }
@@ -97,10 +121,18 @@ class UavOnRuntimeConfig:
             "action_timeout_seconds": "UAV_ON_ACTION_TIMEOUT_SECONDS",
             "verbose_pose": "UAV_ON_VERBOSE_POSE",
             "set_pose_settle_seconds": "UAV_ON_SET_POSE_SETTLE_SECONDS",
+            "set_pose_verify_timeout_seconds": "UAV_ON_SET_POSE_VERIFY_TIMEOUT_SECONDS",
+            "set_pose_poll_interval_seconds": "UAV_ON_SET_POSE_POLL_INTERVAL_SECONDS",
+            "set_pose_position_tolerance_m": "UAV_ON_SET_POSE_POSITION_TOLERANCE_M",
+            "set_pose_orientation_tolerance_deg": "UAV_ON_SET_POSE_ORIENTATION_TOLERANCE_DEG",
             "rgb_only": "UAV_ON_RGB_ONLY",
             "front_view_only": "UAV_ON_FRONT_VIEW_ONLY",
             "rgb_compress": "UAV_ON_RGB_COMPRESS",
             "image_settle_seconds": "UAV_ON_IMAGE_SETTLE_SECONDS",
+            "image_verify_timeout_seconds": "UAV_ON_IMAGE_VERIFY_TIMEOUT_SECONDS",
+            "image_poll_interval_seconds": "UAV_ON_IMAGE_POLL_INTERVAL_SECONDS",
+            "image_pose_tolerance_m": "UAV_ON_IMAGE_POSE_TOLERANCE_M",
+            "image_orientation_tolerance_deg": "UAV_ON_IMAGE_ORIENTATION_TOLERANCE_DEG",
             "jpeg_optimize": "UAV_ON_JPEG_OPTIMIZE",
             "astar_plan_cache": "UAV_ON_ASTAR_PLAN_CACHE",
         }
@@ -115,10 +147,18 @@ class UavOnRuntimeConfig:
             "UAV_ON_ACTION_TIMEOUT_SECONDS": str(self.action_timeout_seconds),
             "UAV_ON_VERBOSE_POSE": _bool_env(self.verbose_pose),
             "UAV_ON_SET_POSE_SETTLE_SECONDS": str(self.set_pose_settle_seconds),
+            "UAV_ON_SET_POSE_VERIFY_TIMEOUT_SECONDS": str(self.set_pose_verify_timeout_seconds),
+            "UAV_ON_SET_POSE_POLL_INTERVAL_SECONDS": str(self.set_pose_poll_interval_seconds),
+            "UAV_ON_SET_POSE_POSITION_TOLERANCE_M": str(self.set_pose_position_tolerance_m),
+            "UAV_ON_SET_POSE_ORIENTATION_TOLERANCE_DEG": str(self.set_pose_orientation_tolerance_deg),
             "UAV_ON_RGB_ONLY": _bool_env(self.rgb_only),
             "UAV_ON_FRONT_VIEW_ONLY": _bool_env(self.front_view_only),
             "UAV_ON_RGB_COMPRESS": _bool_env(self.rgb_compress),
             "UAV_ON_IMAGE_SETTLE_SECONDS": str(self.image_settle_seconds),
+            "UAV_ON_IMAGE_VERIFY_TIMEOUT_SECONDS": str(self.image_verify_timeout_seconds),
+            "UAV_ON_IMAGE_POLL_INTERVAL_SECONDS": str(self.image_poll_interval_seconds),
+            "UAV_ON_IMAGE_POSE_TOLERANCE_M": str(self.image_pose_tolerance_m),
+            "UAV_ON_IMAGE_ORIENTATION_TOLERANCE_DEG": str(self.image_orientation_tolerance_deg),
             "UAV_ON_JPEG_OPTIMIZE": _bool_env(self.jpeg_optimize),
             "UAV_ON_ASTAR_PLAN_CACHE": _bool_env(self.astar_plan_cache),
         }

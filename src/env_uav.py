@@ -303,7 +303,7 @@ class AirVLNENV:
         return obs
 
     def _getStates(self):
-        responses = self.simulator_tool.getImageResponses()
+        responses = self.simulator_tool.getImageResponses(poses=self._get_current_pose())
         cnt = 0
         for item in responses:
             cnt += len(item)

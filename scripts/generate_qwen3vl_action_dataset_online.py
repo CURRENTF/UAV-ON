@@ -68,10 +68,18 @@ CUSTOM_RUNTIME_CONFIG = UavOnRuntimeConfig(
     action_timeout_seconds=DEFAULT_RUNTIME_CONFIG.action_timeout_seconds,
     verbose_pose=DEFAULT_RUNTIME_CONFIG.verbose_pose,
     set_pose_settle_seconds=custom_args.set_pose_settle_seconds,
+    set_pose_verify_timeout_seconds=DEFAULT_RUNTIME_CONFIG.set_pose_verify_timeout_seconds,
+    set_pose_poll_interval_seconds=DEFAULT_RUNTIME_CONFIG.set_pose_poll_interval_seconds,
+    set_pose_position_tolerance_m=DEFAULT_RUNTIME_CONFIG.set_pose_position_tolerance_m,
+    set_pose_orientation_tolerance_deg=DEFAULT_RUNTIME_CONFIG.set_pose_orientation_tolerance_deg,
     rgb_only=custom_args.rgb_only,
     front_view_only=custom_args.front_view_only,
     rgb_compress=custom_args.rgb_compress,
     image_settle_seconds=custom_args.image_settle_seconds,
+    image_verify_timeout_seconds=DEFAULT_RUNTIME_CONFIG.image_verify_timeout_seconds,
+    image_poll_interval_seconds=DEFAULT_RUNTIME_CONFIG.image_poll_interval_seconds,
+    image_pose_tolerance_m=DEFAULT_RUNTIME_CONFIG.image_pose_tolerance_m,
+    image_orientation_tolerance_deg=DEFAULT_RUNTIME_CONFIG.image_orientation_tolerance_deg,
     jpeg_optimize=custom_args.jpeg_optimize,
     astar_plan_cache=DEFAULT_RUNTIME_CONFIG.astar_plan_cache,
 )
@@ -83,6 +91,14 @@ os.environ["UAV_ON_JPEG_OPTIMIZE"] = custom_env["UAV_ON_JPEG_OPTIMIZE"]
 os.environ["UAV_ON_INLINE_VECTOR_ENV"] = custom_env["UAV_ON_INLINE_VECTOR_ENV"]
 os.environ["UAV_ON_IMAGE_SETTLE_SECONDS"] = custom_env["UAV_ON_IMAGE_SETTLE_SECONDS"]
 os.environ["UAV_ON_SET_POSE_SETTLE_SECONDS"] = custom_env["UAV_ON_SET_POSE_SETTLE_SECONDS"]
+os.environ["UAV_ON_IMAGE_VERIFY_TIMEOUT_SECONDS"] = custom_env["UAV_ON_IMAGE_VERIFY_TIMEOUT_SECONDS"]
+os.environ["UAV_ON_IMAGE_POLL_INTERVAL_SECONDS"] = custom_env["UAV_ON_IMAGE_POLL_INTERVAL_SECONDS"]
+os.environ["UAV_ON_IMAGE_POSE_TOLERANCE_M"] = custom_env["UAV_ON_IMAGE_POSE_TOLERANCE_M"]
+os.environ["UAV_ON_IMAGE_ORIENTATION_TOLERANCE_DEG"] = custom_env["UAV_ON_IMAGE_ORIENTATION_TOLERANCE_DEG"]
+os.environ["UAV_ON_SET_POSE_VERIFY_TIMEOUT_SECONDS"] = custom_env["UAV_ON_SET_POSE_VERIFY_TIMEOUT_SECONDS"]
+os.environ["UAV_ON_SET_POSE_POLL_INTERVAL_SECONDS"] = custom_env["UAV_ON_SET_POSE_POLL_INTERVAL_SECONDS"]
+os.environ["UAV_ON_SET_POSE_POSITION_TOLERANCE_M"] = custom_env["UAV_ON_SET_POSE_POSITION_TOLERANCE_M"]
+os.environ["UAV_ON_SET_POSE_ORIENTATION_TOLERANCE_DEG"] = custom_env["UAV_ON_SET_POSE_ORIENTATION_TOLERANCE_DEG"]
 
 from common.param import args  # noqa: E402
 from common.uavon_action_schema import (  # noqa: E402
