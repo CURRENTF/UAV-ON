@@ -18,6 +18,9 @@ CUDA_VISIBLE_DEVICES="$cuda_visible_devices" python -u "$root_dir/src/eval_qwen3
     --eval_save_path "$eval_save_path" \
     --dataset_path "$dataset_path" \
     --is_fixed "${UAV_ON_IS_FIXED:-false}" \
+    --xOy_step_size "${UAV_ON_XOY_STEP_SIZE:-5}" \
+    --z_step_size "${UAV_ON_Z_STEP_SIZE:-2}" \
+    --rotateAngle "${UAV_ON_ROTATE_ANGLE:-15}" \
     --gpu_id "$gpu_id" \
     --batchSize "${UAV_ON_BATCH_SIZE:-1}" \
     --simulator_tool_port "$sim_port" \

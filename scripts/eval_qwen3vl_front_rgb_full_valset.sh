@@ -16,6 +16,9 @@ GPU_ID="${UAV_ON_GPU_ID:-0}"
 MAX_ACTIONS="${UAV_ON_MAX_ACTIONS:-40}"
 SCENE_BOOT_SECONDS="${UAV_ON_SCENE_BOOT_SECONDS:-300}"
 ACTION_TIMEOUT_SECONDS="${UAV_ON_ACTION_TIMEOUT_SECONDS:-12}"
+XOY_STEP_SIZE="${UAV_ON_XOY_STEP_SIZE:-5}"
+Z_STEP_SIZE="${UAV_ON_Z_STEP_SIZE:-2}"
+ROTATE_ANGLE="${UAV_ON_ROTATE_ANGLE:-15}"
 SAMPLE_MODE="${QWEN3VL_EVAL_SAMPLE_MODE:-single}"
 TRAJECTORY_MAX_STEPS="${QWEN3VL_TRAJECTORY_MAX_STEPS:-0}"
 TRAJECTORY_KV_CACHE="${QWEN3VL_TRAJECTORY_KV_CACHE:-false}"
@@ -66,6 +69,9 @@ fi
   echo "[eval] dataset=$DATASET"
   echo "[eval] eval_root=$EVAL_ROOT"
   echo "[eval] max_actions=$MAX_ACTIONS"
+  echo "[eval] xOy_step_size=$XOY_STEP_SIZE"
+  echo "[eval] z_step_size=$Z_STEP_SIZE"
+  echo "[eval] rotateAngle=$ROTATE_ANGLE"
   echo "[eval] sample_mode=$SAMPLE_MODE"
   echo "[eval] trajectory_max_steps=$TRAJECTORY_MAX_STEPS"
   echo "[eval] trajectory_kv_cache=$TRAJECTORY_KV_CACHE"
@@ -104,6 +110,9 @@ UAV_ON_GPU_ID="$GPU_ID" \
 UAV_ON_SIM_PORT="$SIM_PORT" \
 UAV_ON_BATCH_SIZE=1 \
 UAV_ON_MAX_ACTIONS="$MAX_ACTIONS" \
+UAV_ON_XOY_STEP_SIZE="$XOY_STEP_SIZE" \
+UAV_ON_Z_STEP_SIZE="$Z_STEP_SIZE" \
+UAV_ON_ROTATE_ANGLE="$ROTATE_ANGLE" \
 QWEN3VL_MODEL_PATH="$MODEL" \
 QWEN3VL_ADAPTER_PATH="$ADAPTER" \
 QWEN3VL_MAX_NEW_TOKENS="$MAX_NEW_TOKENS" \
@@ -133,6 +142,9 @@ metadata = {
     "dataset": "$DATASET",
     "eval_root": "$EVAL_ROOT",
     "max_actions": int("$MAX_ACTIONS"),
+    "xOy_step_size": float("$XOY_STEP_SIZE"),
+    "z_step_size": float("$Z_STEP_SIZE"),
+    "rotateAngle": float("$ROTATE_ANGLE"),
     "batch_size": 1,
     "view_mode": "front_rgb",
     "sample_mode": "$SAMPLE_MODE",
